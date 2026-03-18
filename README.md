@@ -1,14 +1,21 @@
 # RubiKey
 
-RubiKey 是一个基于 Electron、React 和 TypeScript 的桌面工具，用 GAN 智能魔方的转动来触发 Windows 键盘或鼠标动作。
+RubiKey 是一个基于 Electron、React 和 TypeScript 的 Windows 桌面工具，用 GAN 智能魔方的单步转动来触发系统级键盘或鼠标动作。
 
 ## 当前能力
 
 - 连接兼容的 GAN 蓝牙魔方
-- 将转动动作映射到键盘或鼠标事件
-- 管理多套映射方案
+- 识别 12 个基础单步动作
+  - `U / U'`
+  - `R / R'`
+  - `F / F'`
+  - `D / D'`
+  - `L / L'`
+  - `B / B'`
+- 管理多套 Profile 映射方案
+- 为每个 move 配置键盘或鼠标动作
 - 提供托盘常驻、启停切换与紧急停止
-- 查看最近转动、执行回显与连接诊断
+- 查看最近转动、执行回响与连接诊断
 
 ## 技术栈
 
@@ -35,9 +42,9 @@ npm run build
 ## 项目结构
 
 ```text
-app/main      Electron 主进程与本地存储
+app/main      Electron 主进程、托盘、快捷键、宏执行、配置存储
 app/renderer  React 界面
-app/shared    共享类型、动作协议、映射模型
+app/shared    共享类型、动作协议、Profile 模型
 app/cube      GAN 魔方协议与驱动
 ```
 
@@ -45,10 +52,7 @@ app/cube      GAN 魔方协议与驱动
 
 - 配置保存在 Electron `userData` 目录下的 `profiles.json`
 - 默认全局快捷键：
-  - `Ctrl/Cmd + Shift + F11`：启用或暂停映射
+  - `Ctrl/Cmd + Shift + F11`：启动或暂停系统
   - `Ctrl/Cmd + Shift + F12`：紧急停止
-- 当前描述与实现都以 Windows 宏控制为主要目标
-
-## 状态
-
-当前版本为早期开发态，适合继续迭代连接稳定性、映射体验与打包发布流程。
+- 当前激活的 Profile 会在系统启动后自动生效
+- 当前实现以 Windows 宏控制为主要目标

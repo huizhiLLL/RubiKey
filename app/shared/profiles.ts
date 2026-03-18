@@ -22,6 +22,14 @@ export function createEmptyRules(): ProfileRuleMap {
   return Object.fromEntries(ALL_MOVES.map((move) => [move, null])) as ProfileRuleMap;
 }
 
+export function getBoundMoves(profile: MappingProfile) {
+  return ALL_MOVES.filter((move) => profile.rules[move] != null);
+}
+
+export function getUnboundMoves(profile: MappingProfile) {
+  return ALL_MOVES.filter((move) => profile.rules[move] == null);
+}
+
 export function createMinecraftProfile(): MappingProfile {
   const rules = createEmptyRules();
   rules.U = { kind: "keyboard", target: "a", behavior: "hold", durationMs: 1000 };

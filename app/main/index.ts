@@ -64,14 +64,14 @@ function updateTrayMenu() {
   if (!tray) return;
   const state = getRuntimeState();
   const menu = Menu.buildFromTemplate([
-    { label: state.enabled ? "暂停映射" : "启用映射", click: () => void toggleEnabled() },
+    { label: state.enabled ? "暂停系统" : "启动系统", click: () => void toggleEnabled() },
     { label: "紧急停止", click: () => void emergencyStop() },
     { type: "separator" },
     { label: state.mainWindowVisible ? "隐藏主窗口" : "显示主窗口", click: () => toggleWindowVisibility() },
     { type: "separator" },
     { label: "退出 RubiKey", click: () => { isQuitting = true; app.quit(); } }
   ]);
-  tray.setToolTip(state.enabled ? "RubiKey 已启用" : "RubiKey 已暂停");
+  tray.setToolTip(state.enabled ? "RubiKey 系统运行中" : "RubiKey 系统已暂停");
   tray.setContextMenu(menu);
 }
 
