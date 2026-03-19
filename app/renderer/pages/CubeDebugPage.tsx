@@ -19,20 +19,23 @@ import {
 import type { RuntimeState } from "@shared/runtime";
 import { ALL_MOVES, type CubeMoveEvent, type MoveToken } from "@shared/move";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Activity, BookOpenText, Compass, House, PanelLeftClose, PanelLeftOpen, Plus, Save, Sparkles, Trash2 } from "lucide-react";
+import { Activity, BookOpenText, Compass, House, Info, PanelLeftClose, PanelLeftOpen, Plus, Save, Sparkles, Trash2 } from "lucide-react";
 import { GanCubeDriver } from "../../cube/gan/driver";
 import type { GanDebugEntry } from "../../cube/gan/protocol";
 
 type ConnectionStatus = "disconnected" | "connecting" | "connected" | "error";
-type ViewKey = "home" | "profiles" | "moves" | "actions" | "diagnostics";
+type ViewKey = "home" | "profiles" | "moves" | "actions" | "diagnostics" | "about";
 
 const NAV_ITEMS: Array<{ key: ViewKey; label: string; hint: string; icon: ReactNode }> = [
   { key: "home", label: "首页", hint: "", icon: <House size={18} strokeWidth={1.9} /> },
   { key: "profiles", label: "方案映射", hint: "", icon: <BookOpenText size={18} strokeWidth={1.9} /> },
   { key: "moves", label: "最近转动", hint: "", icon: <Compass size={18} strokeWidth={1.9} /> },
   { key: "actions", label: "执行回响", hint: "", icon: <Sparkles size={18} strokeWidth={1.9} /> },
-  { key: "diagnostics", label: "连接诊断", hint: "", icon: <Activity size={18} strokeWidth={1.9} /> }
+  { key: "diagnostics", label: "连接诊断", hint: "", icon: <Activity size={18} strokeWidth={1.9} /> },
+  { key: "about", label: "关于", hint: "", icon: <Info size={18} strokeWidth={1.9} /> }
 ];
+
+const REPOSITORY_URL = "https://github.com/huizhiLLL/RubiKey";
 
 function formatTime(timestamp: number) {
   return new Date(timestamp).toLocaleTimeString("zh-CN", {
@@ -135,6 +138,7 @@ export function CubeDebugPage() {
     () => typeof navigator !== "undefined" && "bluetooth" in navigator,
     []
   );
+  const appVersion = useMemo(() => window.rubikey?.version ?? "0.1.0", []);
 
   const activeProfile = useMemo(
     () => profileConfig.profiles.find((profile) => profile.id === profileConfig.activeProfileId) ?? profileConfig.profiles[0] ?? null,
@@ -281,12 +285,12 @@ export function CubeDebugPage() {
     });
   }
 
-  function updateProfileMeta(field: "name" | "description", value: string) {
+  function updateProfileMeta(value: string) {
     if (!activeProfile) return;
     patchConfig((draft) => {
       const profile = draft.profiles.find((item) => item.id === draft.activeProfileId);
       if (!profile) return;
-      profile[field] = value;
+      profile.name = value;
       profile.updatedAt = Date.now();
     });
   }
@@ -393,7 +397,7 @@ export function CubeDebugPage() {
           <div className="button-row wrap">
             <button onClick={handleConnect} disabled={status === "connecting" || !canUseBluetooth}>{status === "connecting" ? "连接中..." : "连接 GAN"}</button>
             <button className="ghost" onClick={handleDisconnect} disabled={status !== "connected"}>断开连接</button>
-            <button className="ghost" onClick={toggleRuntimeEnabled}>{runtimeState?.enabled ? "暂停系统" : "启动系统"}</button>
+            <button className="ghost" onClick={toggleRuntimeEnabled}>{runtimeState?.enabled ? "暂停系统" : "启动映射"}</button>
             <button className="danger" onClick={triggerEmergencyStop}>紧急停止</button>
           </div>
         </section>
@@ -467,7 +471,7 @@ export function CubeDebugPage() {
           <div className="profile-editor">
             <label className="field-block">
               <span>方案名称</span>
-              <input value={activeProfile.name} onChange={(event) => updateProfileMeta("name", event.target.value)} />
+              <input value={activeProfile.name} onChange={(event) => updateProfileMeta(event.target.value)} />
             </label>
             <div className="button-row wrap">
               <button
@@ -632,12 +636,49 @@ export function CubeDebugPage() {
     );
   }
 
+  function renderAbout() {
+    return (
+      <section className="about-layout">
+        <section className="about-hero">
+          <div className="panel-head">
+            <div>
+              <h2>关于 RubiKey</h2>
+            </div>
+          </div>
+          <p>
+            RubiKey 是一个基于 Electron 构建的 Windows 桌面工具，
+            用 GAN 智能魔方触发系统级键鼠操作
+          </p>
+        </section>
+
+        <section className="about-grid">
+          <article className="about-card">
+            <span>版本号</span>
+            <strong>{appVersion}</strong>
+          </article>
+          <article className="about-card">
+            <span>Github 仓库</span>
+            <a href={REPOSITORY_URL} target="_blank" rel="noreferrer">
+              {REPOSITORY_URL}
+            </a>
+            <p>如果这个项目对你有帮助，欢迎到仓库点个 Star。</p>
+          </article>
+          <article className="about-card">
+            <span>说明</span>
+            <p>当前测试主要面向 Windows 11 和部分 GAN 智能魔方，如遇问题欢迎反馈 issue 或 PR。</p>
+          </article>
+        </section>
+      </section>
+    );
+  }
+
   function renderContent() {
     switch (activeView) {
       case "profiles": return renderProfiles();
       case "moves": return renderMoves();
       case "actions": return renderActions();
       case "diagnostics": return renderDiagnostics();
+      case "about": return renderAbout();
       default: return renderHome();
     }
   }

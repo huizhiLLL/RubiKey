@@ -3,3 +3,5 @@ dist/
 dist-electron/
 .npm-cache/
 AGENTS.md
+release/
+.electron-builder-cache/
