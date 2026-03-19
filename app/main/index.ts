@@ -1,4 +1,5 @@
 import { app, BrowserWindow, globalShortcut, ipcMain, Menu, Tray, nativeImage } from "electron";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { MacroExecutor } from "./macro/executor.js";
@@ -26,6 +27,19 @@ function getProfileStore() {
   return new ProfileStore(path.join(app.getPath("userData"), "profiles.json"));
 }
 
+function resolveAppIconPath() {
+  const candidates = [
+    path.join(process.cwd(), "assets", "favicon.ico"),
+    path.join(process.cwd(), "assets", "favicon.svg"),
+    path.join(__dirname, "../../assets/favicon.ico"),
+    path.join(__dirname, "../../assets/favicon.svg"),
+    path.join(process.resourcesPath, "assets", "favicon.ico"),
+    path.join(process.resourcesPath, "assets", "favicon.svg")
+  ];
+
+  return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0];
+}
+
 function getActiveProfile() {
   return profileConfig.profiles.find((profile) => profile.id === profileConfig.activeProfileId) ?? profileConfig.profiles[0] ?? null;
 }
@@ -49,15 +63,7 @@ function getRuntimeState(): RuntimeState {
 }
 
 function createTrayImage() {
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
-      <rect x="8" y="8" width="48" height="48" rx="14" fill="#d98ea9"/>
-      <circle cx="24" cy="24" r="5" fill="#fff7f8"/>
-      <circle cx="40" cy="24" r="5" fill="#fff7f8"/>
-      <circle cx="24" cy="40" r="5" fill="#fff7f8"/>
-      <circle cx="40" cy="40" r="5" fill="#fff7f8"/>
-    </svg>`;
-  return nativeImage.createFromDataURL(`data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`);
+  return nativeImage.createFromPath(resolveAppIconPath());
 }
 
 function updateTrayMenu() {
@@ -118,8 +124,9 @@ function createMainWindow() {
     minWidth: 1120,
     minHeight: 720,
     title: "RubiKey",
+    icon: resolveAppIconPath(),
     webPreferences: {
-      preload: app.isPackaged ? path.join(__dirname, "preload.cjs") : path.join(process.cwd(), "app", "main", "preload.cjs"),
+      preload: app.isPackaged ? path.join(__dirname, "preload.js") : path.join(process.cwd(), "app", "main", "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false
     }

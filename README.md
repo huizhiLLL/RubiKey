@@ -1,6 +1,6 @@
 # RubiKey
 
-RubiKey 是一个基于 Electron、React 和 TypeScript 的 Windows 桌面工具，用 GAN 智能魔方的单步转动来触发系统级键盘或鼠标动作。
+RubiKey 是一个基于 Electron、React 和 TypeScript 的 Windows 桌面工具，使 GAN 智能魔方的转动触发键鼠操作。
 
 ## 当前能力
 

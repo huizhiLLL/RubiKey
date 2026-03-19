@@ -1,12 +1,12 @@
 import { createDefaultKeyboardAction, type MacroActionConfig } from "./macro.js";
 import { ALL_MOVES, type MoveToken } from "./move.js";
+import defaultProfiles from "./default-profiles.json" with { type: "json" };
 
 export type ProfileRuleMap = Record<MoveToken, MacroActionConfig | null>;
 
 export interface MappingProfile {
   id: string;
   name: string;
-  description: string;
   rules: ProfileRuleMap;
   updatedAt: number;
 }
@@ -17,6 +17,12 @@ export interface ProfileConfig {
   profiles: MappingProfile[];
   updatedAt: number;
 }
+
+type DefaultProfileSeed = {
+  id: string;
+  name: string;
+  rules?: Partial<Record<MoveToken, MacroActionConfig | null>>;
+};
 
 export function createEmptyRules(): ProfileRuleMap {
   return Object.fromEntries(ALL_MOVES.map((move) => [move, null])) as ProfileRuleMap;
@@ -30,44 +36,6 @@ export function getUnboundMoves(profile: MappingProfile) {
   return ALL_MOVES.filter((move) => profile.rules[move] == null);
 }
 
-export function createMinecraftProfile(): MappingProfile {
-  const rules = createEmptyRules();
-  rules.U = { kind: "keyboard", target: "a", behavior: "hold", durationMs: 1000 };
-  rules["U'"] = { kind: "keyboard", target: "d", behavior: "hold", durationMs: 1000 };
-  rules.R = { kind: "keyboard", target: "w", behavior: "hold", durationMs: 1000 };
-  rules["R'"] = { kind: "keyboard", target: "s", behavior: "hold", durationMs: 1000 };
-  rules.D = { kind: "keyboard", target: "e", behavior: "tap", durationMs: 100 };
-  rules.F = { kind: "mouse", target: "left", behavior: "tap", durationMs: 100 };
-
-  return {
-    id: "minecraft-simple",
-    name: "Minecraft 简单游玩",
-    description: "基于 WASD + E + 左键的基础游玩映射",
-    rules,
-    updatedAt: Date.now()
-  };
-}
-
-export function createBlankProfile(name = "新方案"): MappingProfile {
-  return {
-    id: `profile-${Date.now()}`,
-    name,
-    description: "自定义映射方案",
-    rules: createEmptyRules(),
-    updatedAt: Date.now()
-  };
-}
-
-export function createDefaultProfileConfig(): ProfileConfig {
-  const minecraft = createMinecraftProfile();
-  return {
-    enabled: true,
-    activeProfileId: minecraft.id,
-    profiles: [minecraft],
-    updatedAt: Date.now()
-  };
-}
-
 export function normalizeProfileRules(input?: Partial<Record<MoveToken, MacroActionConfig | null>>) {
   const rules = createEmptyRules();
   for (const move of ALL_MOVES) {
@@ -75,6 +43,36 @@ export function normalizeProfileRules(input?: Partial<Record<MoveToken, MacroAct
     rules[move] = value ? { ...value } : null;
   }
   return rules;
+}
+
+export function createDefaultProfiles() {
+  return (defaultProfiles as DefaultProfileSeed[]).map((profile) => ({
+    id: profile.id,
+    name: profile.name,
+    rules: normalizeProfileRules(profile.rules),
+    updatedAt: Date.now()
+  })) satisfies MappingProfile[];
+}
+
+export function createBlankProfile(name = "新方案"): MappingProfile {
+  return {
+    id: `profile-${Date.now()}`,
+    name,
+    rules: createEmptyRules(),
+    updatedAt: Date.now()
+  };
+}
+
+export function createDefaultProfileConfig(): ProfileConfig {
+  const [firstProfile, ...restProfiles] = createDefaultProfiles();
+  const safeFirstProfile = firstProfile ?? createBlankProfile("默认方案");
+
+  return {
+    enabled: true,
+    activeProfileId: safeFirstProfile.id,
+    profiles: [safeFirstProfile, ...restProfiles],
+    updatedAt: Date.now()
+  };
 }
 
 export function createFallbackAction(): MacroActionConfig {

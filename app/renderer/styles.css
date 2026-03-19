@@ -359,6 +359,52 @@ button.danger { background: linear-gradient(135deg, #bf6678, #e18ea4); }
 .log-row, .debug-row, .hint-row { padding: 12px 14px; }
 .debug-row { display: grid; gap: 8px; }
 .compact-panel { min-height: 240px; }
+.about-layout {
+  display: grid;
+  gap: 18px;
+}
+.about-hero,
+.about-card {
+  padding: 18px;
+  border-radius: 16px;
+  border: 1px solid rgba(233,154,174,0.22);
+  background: rgba(255,255,255,0.62);
+}
+.about-hero {
+  display: grid;
+  gap: 10px;
+}
+.about-hero p,
+.about-card p {
+  margin: 0;
+  line-height: 1.7;
+  color: var(--jpui-text-secondary);
+}
+.about-grid {
+  display: grid;
+  gap: 12px;
+}
+.about-card {
+  display: grid;
+  gap: 6px;
+}
+.about-card span {
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  color: var(--jpui-text-soft);
+}
+.about-card strong {
+  font-family: var(--jpui-font-heading);
+  font-size: 1.05rem;
+}
+.about-card a {
+  color: var(--jpui-secondary);
+  text-decoration: none;
+  word-break: break-all;
+}
+.about-card a:hover {
+  text-decoration: underline;
+}
 .diagnostic-layout {
   display: grid;
   gap: 14px;

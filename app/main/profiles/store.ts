@@ -50,7 +50,6 @@ export class ProfileStore {
     return {
       id: input.id ?? fallback.id,
       name: input.name ?? fallback.name,
-      description: input.description ?? fallback.description,
       rules: normalizeProfileRules(input.rules),
       updatedAt: input.updatedAt ?? Date.now()
     } satisfies MappingProfile;
