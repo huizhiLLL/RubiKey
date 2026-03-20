@@ -17,12 +17,95 @@
   --jpui-border: rgba(233, 154, 174, 0.22);
   --jpui-shadow: rgba(184, 133, 149, 0.12);
   --jpui-shadow-soft: rgba(233, 154, 174, 0.08);
+  --jpui-danger: #be5e72;
+  --jpui-page-stripe: rgba(160,102,121,0.05);
+  --jpui-ghost-bg: rgba(255, 255, 255, 0.34);
+  --jpui-ghost-border: rgba(233, 154, 174, 0.28);
+  --jpui-nav-bg: rgba(255,255,255,0.32);
+  --jpui-nav-border: rgba(233,154,174,0.24);
+  --jpui-nav-glyph-bg: rgba(255,255,255,0.55);
+  --jpui-nav-glyph-active-bg: rgba(255, 255, 255, 0.88);
+  --jpui-input-border: rgba(233,154,174,0.3);
+  --jpui-focus-ring: rgba(233,154,174,0.14);
+  --jpui-chip-bg: rgba(255,255,255,0.36);
+  --jpui-chip-border: rgba(233,154,174,0.28);
+  --jpui-panel-border-soft: rgba(233,154,174,0.22);
+  --jpui-badge-bg: rgba(255,255,255,0.78);
+  --jpui-badge-border: rgba(233,154,174,0.24);
+  --jpui-nav-active-text: #8e5268;
+  --jpui-nav-active-bg-start: rgba(248, 216, 225, 0.92);
+  --jpui-nav-active-bg-end: rgba(255, 243, 246, 0.98);
+  --jpui-nav-active-border: rgba(217, 142, 169, 0.45);
+  --jpui-nav-active-inset: rgba(201, 106, 137, 0.88);
+  --jpui-nav-active-shadow: rgba(220, 166, 183, 0.12);
+  --jpui-input-bg: rgba(255,255,255,0.68);
+  --jpui-card-bg: rgba(255,255,255,0.55);
+  --jpui-card-bg-strong: rgba(255,255,255,0.62);
+  --jpui-rule-bg-start: rgba(255,255,255,0.72);
+  --jpui-rule-bg-end: rgba(255,248,249,0.92);
+  --jpui-diagnostic-healthy-start: rgba(244, 255, 247, 0.92);
+  --jpui-diagnostic-healthy-border: rgba(138, 183, 155, 0.32);
+  --jpui-diagnostic-pending-start: rgba(255, 250, 243, 0.94);
+  --jpui-diagnostic-pending-border: rgba(215, 170, 120, 0.34);
+  --jpui-diagnostic-warning-start: rgba(255, 242, 245, 0.94);
+  --jpui-diagnostic-warning-border: rgba(191, 102, 120, 0.28);
   --jpui-radius-sm: 12px;
   --jpui-radius-md: 16px;
   --jpui-radius-lg: 24px;
   --jpui-radius-xl: 32px;
   --jpui-font-heading: "Noto Serif SC", "Source Han Serif SC", "STSong", serif;
   --jpui-font-body: "Noto Sans SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+}
+
+body[data-theme="mist"] {
+  --jpui-primary: #8fc7ff;
+  --jpui-primary-deep: #4e93de;
+  --jpui-secondary: #245183;
+  --jpui-accent-warm: #68b2f0;
+  --jpui-success: #5f9b88;
+  --jpui-bg-top: #fbfdff;
+  --jpui-bg-mid: #f1f8ff;
+  --jpui-bg-bottom: #dbeeff;
+  --jpui-surface: rgba(253, 255, 255, 0.88);
+  --jpui-surface-strong: rgba(255, 255, 255, 0.96);
+  --jpui-text-primary: #16385d;
+  --jpui-text-secondary: #55779f;
+  --jpui-text-soft: #7a9abb;
+  --jpui-border: rgba(78, 147, 222, 0.18);
+  --jpui-shadow: rgba(44, 92, 150, 0.11);
+  --jpui-shadow-soft: rgba(78, 147, 222, 0.11);
+  --jpui-danger: #be6f78;
+  --jpui-page-stripe: rgba(78, 147, 222, 0.05);
+  --jpui-ghost-bg: rgba(255, 255, 255, 0.78);
+  --jpui-ghost-border: rgba(78, 147, 222, 0.22);
+  --jpui-nav-bg: rgba(255,255,255,0.72);
+  --jpui-nav-border: rgba(78,147,222,0.18);
+  --jpui-nav-glyph-bg: rgba(244, 250, 255, 0.98);
+  --jpui-nav-glyph-active-bg: rgba(255, 255, 255, 0.98);
+  --jpui-input-border: rgba(78,147,222,0.24);
+  --jpui-focus-ring: rgba(104,178,240,0.18);
+  --jpui-chip-bg: rgba(255,255,255,0.82);
+  --jpui-chip-border: rgba(78,147,222,0.2);
+  --jpui-panel-border-soft: rgba(78,147,222,0.16);
+  --jpui-badge-bg: rgba(255,255,255,0.94);
+  --jpui-badge-border: rgba(78,147,222,0.18);
+  --jpui-nav-active-text: #113c69;
+  --jpui-nav-active-bg-start: rgba(218, 238, 255, 0.98);
+  --jpui-nav-active-bg-end: rgba(245, 251, 255, 1);
+  --jpui-nav-active-border: rgba(78, 147, 222, 0.3);
+  --jpui-nav-active-inset: rgba(78, 147, 222, 0.88);
+  --jpui-nav-active-shadow: rgba(92, 170, 242, 0.16);
+  --jpui-input-bg: rgba(255,255,255,0.94);
+  --jpui-card-bg: rgba(255,255,255,0.78);
+  --jpui-card-bg-strong: rgba(255,255,255,0.86);
+  --jpui-rule-bg-start: rgba(255,255,255,0.96);
+  --jpui-rule-bg-end: rgba(236, 246, 255, 1);
+  --jpui-diagnostic-healthy-start: rgba(240, 251, 247, 0.94);
+  --jpui-diagnostic-healthy-border: rgba(95, 155, 136, 0.28);
+  --jpui-diagnostic-pending-start: rgba(232, 245, 255, 0.98);
+  --jpui-diagnostic-pending-border: rgba(104, 178, 240, 0.26);
+  --jpui-diagnostic-warning-start: rgba(253, 242, 243, 0.92);
+  --jpui-diagnostic-warning-border: rgba(190, 111, 120, 0.22);
 }
 
 * { box-sizing: border-box; }
@@ -36,8 +119,8 @@ body {
   font-family: var(--jpui-font-body);
   overflow: hidden;
   background:
-    radial-gradient(circle at top left, rgba(255, 214, 224, 0.54), transparent 30%),
-    radial-gradient(circle at bottom right, rgba(230, 179, 194, 0.4), transparent 26%),
+    radial-gradient(circle at top left, color-mix(in srgb, var(--jpui-primary) 42%, white 58%), transparent 30%),
+    radial-gradient(circle at bottom right, color-mix(in srgb, var(--jpui-primary-deep) 28%, white 72%), transparent 26%),
     linear-gradient(180deg, var(--jpui-bg-top) 0%, var(--jpui-bg-mid) 55%, var(--jpui-bg-bottom) 100%);
 }
 button, select, input { font: inherit; }
@@ -54,11 +137,11 @@ button:hover { filter: brightness(0.98); }
 button:disabled { cursor: default; opacity: 0.56; }
 button.ghost {
   color: var(--jpui-secondary);
-  background: rgba(255, 255, 255, 0.34);
-  border: 1px solid rgba(233, 154, 174, 0.28);
+  background: var(--jpui-ghost-bg);
+  border: 1px solid var(--jpui-ghost-border);
   box-shadow: none;
 }
-button.danger { background: linear-gradient(135deg, #bf6678, #e18ea4); }
+button.danger { background: linear-gradient(135deg, color-mix(in srgb, var(--jpui-danger) 88%, black 12%), var(--jpui-danger)); }
 
 .app-shell {
   position: relative;
@@ -77,7 +160,7 @@ button.danger { background: linear-gradient(135deg, #bf6678, #e18ea4); }
   inset: 0;
   pointer-events: none;
   background:
-    repeating-linear-gradient(0deg, rgba(160,102,121,0.05) 0, rgba(160,102,121,0.05) 1px, transparent 1px, transparent 6px);
+    repeating-linear-gradient(0deg, var(--jpui-page-stripe) 0, var(--jpui-page-stripe) 1px, transparent 1px, transparent 6px);
   opacity: 0.08;
 }
 .floating-sidebar,
@@ -92,7 +175,7 @@ button.danger { background: linear-gradient(135deg, #bf6678, #e18ea4); }
 }
 .floating-sidebar {
   display: grid;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto 1fr auto;
   gap: 14px;
   min-height: 0;
   padding: 16px 14px;
@@ -165,17 +248,17 @@ button.danger { background: linear-gradient(135deg, #bf6678, #e18ea4); }
   min-height: 34px;
   border-radius: 16px;
   color: var(--jpui-secondary);
-  background: rgba(255,255,255,0.32);
-  border: 1px solid rgba(233,154,174,0.24);
+  background: var(--jpui-nav-bg);
+  border: 1px solid var(--jpui-nav-border);
   box-shadow: inset 0 0 0 1px rgba(255,255,255,0.12);
 }
 .nav-item.active {
-  color: #8e5268;
-  background: linear-gradient(135deg, rgba(248, 216, 225, 0.92), rgba(255, 243, 246, 0.98));
-  border-color: rgba(217, 142, 169, 0.45);
+  color: var(--jpui-nav-active-text);
+  background: linear-gradient(135deg, var(--jpui-nav-active-bg-start), var(--jpui-nav-active-bg-end));
+  border-color: var(--jpui-nav-active-border);
   box-shadow:
-    inset 3px 0 0 rgba(201, 106, 137, 0.88),
-    0 10px 18px rgba(220, 166, 183, 0.12);
+    inset 3px 0 0 var(--jpui-nav-active-inset),
+    0 10px 18px var(--jpui-nav-active-shadow);
 }
 .nav-glyph {
   display: inline-flex;
@@ -184,11 +267,11 @@ button.danger { background: linear-gradient(135deg, #bf6678, #e18ea4); }
   width: 24px;
   height: 24px;
   border-radius: 999px;
-  background: rgba(255,255,255,0.55);
+  background: var(--jpui-nav-glyph-bg);
   color: inherit;
 }
 .nav-item.active .nav-glyph {
-  background: rgba(255, 255, 255, 0.88);
+  background: var(--jpui-nav-glyph-active-bg);
 }
 .nav-item strong {
   line-height: 1.15;
@@ -241,12 +324,23 @@ button.danger { background: linear-gradient(135deg, #bf6678, #e18ea4); }
 .add-binding-box {
   border-radius: var(--jpui-radius-md);
   border: 1px solid var(--jpui-border);
-  background: rgba(255,255,255,0.55);
+  background: var(--jpui-card-bg);
 }
 .summary-card,
 .compact-panel,
 .add-binding-box { padding: 18px; }
 .hero-summary { display: grid; gap: 18px; }
+.mac-input-card {
+  border-radius: var(--jpui-radius-md);
+  border: 1px solid var(--jpui-border);
+  background: var(--jpui-card-bg);
+  padding: 18px;
+}
+.mac-input-label {
+  font-size: 0.88rem;
+  line-height: 1.6;
+  color: var(--jpui-text-secondary);
+}
 .panel-head,
 .status-row,
 .button-row,
@@ -293,8 +387,8 @@ button.danger { background: linear-gradient(135deg, #bf6678, #e18ea4); }
 .add-binding-row select {
   width: 100%;
   border-radius: var(--jpui-radius-md);
-  border: 1px solid rgba(233,154,174,0.3);
-  background: rgba(255,255,255,0.68);
+  border: 1px solid var(--jpui-input-border);
+  background: var(--jpui-input-bg);
   padding: 0.82rem 0.95rem;
   color: var(--jpui-text-primary);
 }
@@ -304,12 +398,12 @@ button.danger { background: linear-gradient(135deg, #bf6678, #e18ea4); }
 .add-binding-row select:focus {
   outline: none;
   border-color: var(--jpui-primary-deep);
-  box-shadow: 0 0 0 3px rgba(233,154,174,0.14);
+  box-shadow: 0 0 0 3px var(--jpui-focus-ring);
 }
 .profile-chip {
   color: var(--jpui-secondary);
-  background: rgba(255,255,255,0.36);
-  border: 1px solid rgba(233,154,174,0.28);
+  background: var(--jpui-chip-bg);
+  border: 1px solid var(--jpui-chip-border);
   box-shadow: none;
 }
 .profile-chip.icon-button {
@@ -324,7 +418,7 @@ button.danger { background: linear-gradient(135deg, #bf6678, #e18ea4); }
   gap: 14px;
   padding: 16px;
   background:
-    linear-gradient(180deg, rgba(255,255,255,0.72), rgba(255,248,249,0.92));
+    linear-gradient(180deg, var(--jpui-rule-bg-start), var(--jpui-rule-bg-end));
 }
 .rule-editor-grid {
   display: grid;
@@ -353,8 +447,8 @@ button.danger { background: linear-gradient(135deg, #bf6678, #e18ea4); }
   gap: 8px;
   padding: 12px;
   border-radius: 14px;
-  border: 1px solid rgba(233,154,174,0.22);
-  background: rgba(255,255,255,0.68);
+  border: 1px solid var(--jpui-panel-border-soft);
+  background: var(--jpui-input-bg);
 }
 .log-row, .debug-row, .hint-row { padding: 12px 14px; }
 .debug-row { display: grid; gap: 8px; }
@@ -367,8 +461,8 @@ button.danger { background: linear-gradient(135deg, #bf6678, #e18ea4); }
 .about-card {
   padding: 18px;
   border-radius: 16px;
-  border: 1px solid rgba(233,154,174,0.22);
-  background: rgba(255,255,255,0.62);
+  border: 1px solid var(--jpui-panel-border-soft);
+  background: var(--jpui-card-bg-strong);
 }
 .about-hero {
   display: grid;
@@ -415,21 +509,21 @@ button.danger { background: linear-gradient(135deg, #bf6678, #e18ea4); }
   gap: 12px;
   padding: 16px;
   border-radius: 16px;
-  border: 1px solid rgba(233,154,174,0.22);
-  background: rgba(255,255,255,0.62);
+  border: 1px solid var(--jpui-panel-border-soft);
+  background: var(--jpui-card-bg-strong);
 }
 .diagnostic-summary.healthy {
-  background: linear-gradient(180deg, rgba(244, 255, 247, 0.92), rgba(255,255,255,0.72));
-  border-color: rgba(138, 183, 155, 0.32);
+  background: linear-gradient(180deg, var(--jpui-diagnostic-healthy-start), rgba(255,255,255,0.72));
+  border-color: var(--jpui-diagnostic-healthy-border);
 }
 .diagnostic-summary.pending,
 .diagnostic-summary.idle {
-  background: linear-gradient(180deg, rgba(255, 250, 243, 0.94), rgba(255,255,255,0.72));
-  border-color: rgba(215, 170, 120, 0.34);
+  background: linear-gradient(180deg, var(--jpui-diagnostic-pending-start), rgba(255,255,255,0.72));
+  border-color: var(--jpui-diagnostic-pending-border);
 }
 .diagnostic-summary.warning {
-  background: linear-gradient(180deg, rgba(255, 242, 245, 0.94), rgba(255,255,255,0.72));
-  border-color: rgba(191, 102, 120, 0.28);
+  background: linear-gradient(180deg, var(--jpui-diagnostic-warning-start), rgba(255,255,255,0.72));
+  border-color: var(--jpui-diagnostic-warning-border);
 }
 .diagnostic-summary p {
   margin: 0;
@@ -449,8 +543,8 @@ button.danger { background: linear-gradient(135deg, #bf6678, #e18ea4); }
   min-width: 56px;
   padding: 0.32rem 0.7rem;
   border-radius: 999px;
-  background: rgba(255,255,255,0.78);
-  border: 1px solid rgba(233,154,174,0.24);
+  background: var(--jpui-badge-bg);
+  border: 1px solid var(--jpui-badge-border);
   color: var(--jpui-secondary);
   font-size: 0.76rem;
   letter-spacing: 0.08em;
@@ -478,7 +572,7 @@ button.danger { background: linear-gradient(135deg, #bf6678, #e18ea4); }
   padding: 12px 14px;
   border-radius: var(--jpui-radius-md);
   border: 1px solid var(--jpui-border);
-  background: rgba(255,255,255,0.55);
+  background: var(--jpui-card-bg);
 }
 .profile-preview-rule strong {
   font-size: 1rem;
@@ -494,16 +588,16 @@ button.danger { background: linear-gradient(135deg, #bf6678, #e18ea4); }
   padding: 12px 14px;
   border-radius: var(--jpui-radius-md);
   border: 1px solid var(--jpui-border);
-  background: rgba(255,255,255,0.55);
+  background: var(--jpui-card-bg);
 }
 .mini-key-value strong {
   text-align: right;
   font-family: var(--jpui-font-heading);
 }
-.error-text { margin: 0; color: #be5e72; }
+.error-text { margin: 0; color: var(--jpui-danger); }
 .status-row strong[data-state="connected"] { color: var(--jpui-success); }
 .status-row strong[data-state="connecting"] { color: var(--jpui-accent-warm); }
-.status-row strong[data-state="error"] { color: #be5e72; }
+.status-row strong[data-state="error"] { color: var(--jpui-danger); }
 .empty-state { margin: 0; }
 .sidebar-toggle {
   width: 34px;
@@ -518,6 +612,46 @@ button.danger { background: linear-gradient(135deg, #bf6678, #e18ea4); }
 .floating-sidebar.collapsed .sidebar-toggle {
   width: 32px;
   height: 32px;
+}
+.sidebar-footer {
+  display: grid;
+  gap: 10px;
+  padding-top: 6px;
+  border-top: 1px solid var(--jpui-border);
+}
+.theme-meta {
+  display: grid;
+  gap: 4px;
+  padding: 2px 4px 0;
+}
+.theme-meta span {
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  color: var(--jpui-text-soft);
+}
+.theme-meta strong,
+.theme-switch strong {
+  font-family: var(--jpui-font-heading);
+}
+.theme-switch {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  border-radius: 18px;
+  padding-inline: 10px 14px;
+  text-align: left;
+}
+.floating-sidebar.collapsed .sidebar-footer {
+  border-top: 0;
+  padding-top: 0;
+  justify-items: center;
+}
+.floating-sidebar.collapsed .theme-switch {
+  grid-template-columns: 1fr;
+  padding: 6px 4px;
+  justify-items: center;
 }
 
 @media (max-width: 1220px) {
