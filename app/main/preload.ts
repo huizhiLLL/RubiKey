@@ -5,7 +5,7 @@ import type { RuntimeState } from "../shared/runtime.js";
 import type { MoveToken } from "../shared/move.js";
 
 contextBridge.exposeInMainWorld("rubikey", {
-  version: "0.1.0",
+  version: "0.1.1",
   executeActionForMove(move: MoveToken) {
     return ipcRenderer.invoke("macro:execute-for-move", move) as Promise<MacroExecutionResult | null>;
   },

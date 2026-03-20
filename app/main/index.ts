@@ -23,8 +23,25 @@ let emergencyStopCount = 0;
 let isQuitting = false;
 const macroExecutor = new MacroExecutor();
 
+function configurePortableUserDataPath() {
+  const portableExecutableDir = process.env.PORTABLE_EXECUTABLE_DIR;
+  if (!app.isPackaged || !portableExecutableDir) {
+    return;
+  }
+
+  app.setPath("userData", path.join(portableExecutableDir, "data"));
+}
+
 function getProfileStore() {
   return new ProfileStore(path.join(app.getPath("userData"), "profiles.json"));
+}
+
+function resolvePreloadPath() {
+  if (!app.isPackaged) {
+    return path.join(process.cwd(), "app", "main", "preload.cjs");
+  }
+
+  return path.join(process.resourcesPath, "app.asar.unpacked", "dist-electron", "main", "preload.cjs");
 }
 
 function resolveAppIconPath() {
@@ -126,7 +143,7 @@ function createMainWindow() {
     title: "RubiKey",
     icon: resolveAppIconPath(),
     webPreferences: {
-      preload: app.isPackaged ? path.join(__dirname, "preload.js") : path.join(process.cwd(), "app", "main", "preload.cjs"),
+      preload: resolvePreloadPath(),
       contextIsolation: true,
       nodeIntegration: false
     }
@@ -223,6 +240,8 @@ ipcMain.handle("macro:execute-for-move", async (_event, move: MoveToken) => {
   }
   return macroExecutor.executeAction(action);
 });
+
+configurePortableUserDataPath();
 
 app.whenReady().then(async () => {
   profileConfig = await getProfileStore().load();

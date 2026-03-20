@@ -6,3 +6,4 @@ AGENTS.md
 release/
 .electron-builder-cache/
 ref/
+scripts/

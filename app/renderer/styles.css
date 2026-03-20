@@ -57,7 +57,7 @@
   --jpui-font-body: "Noto Sans SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
 }
 
-body[data-theme="mist"] {
+:root[data-theme="mist"] {
   --jpui-primary: #8fc7ff;
   --jpui-primary-deep: #4e93de;
   --jpui-secondary: #245183;

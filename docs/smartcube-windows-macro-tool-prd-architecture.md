@@ -210,6 +210,11 @@ RubiKey 当前可以定义为：
 
 - `npm run typecheck` 可通过
 - `npm run build` 可通过
+- Windows 打包脚本已固定使用仓库内 `.electron-builder-cache/` 与同卷临时目录，减少 `winCodeSign` 缓存下载导致的打包失败
+- portable 版已显式将 `userData` 重定向到便携包同目录的 `data/`，避免退出后配置丢失
+- 方案编辑已改为自动保存，并在保存失败时直接反馈错误状态，降低手动点击保存遗漏导致的配置丢失风险
+- packaged 环境已改为优先使用 CommonJS preload 注入 `window.rubikey`，并在注入缺失时直接给出明确错误提示
+- packaged / portable 版的 preload 已改为从 `app.asar.unpacked` 的真实文件路径加载，降低 `window.rubikey` 注入失败概率
 
 这说明：
 

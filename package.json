@@ -1,6 +1,6 @@
 {
   "name": "rubikey",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Smart cube driven Windows macro tool",
   "main": "dist-electron/main/index.js",
@@ -12,12 +12,12 @@
     "dev:electron": "wait-on tcp:5173 dist-electron/main/index.js && electron .",
     "build": "npm run build:renderer && npm run build:main",
     "build:renderer": "vite build",
-    "build:main": "tsc -p tsconfig.electron.json",
+    "build:main": "tsc -p tsconfig.electron.json && node scripts/sync-preload.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.electron.json --noEmit",
     "dist:win": "npm run dist:portable",
-    "dist:dir": "npm run build && electron-builder --dir --win --x64",
-    "dist:portable": "npm run build && electron-builder --win portable --x64",
-    "dist:setup": "npm run build && electron-builder --win nsis --x64"
+    "dist:dir": "node scripts/run-electron-builder.mjs --dir --win --x64",
+    "dist:portable": "node scripts/run-electron-builder.mjs --win portable --x64",
+    "dist:setup": "node scripts/run-electron-builder.mjs --win nsis --x64"
   },
   "dependencies": {
     "@nut-tree/nut-js": "^4.2.0",
@@ -46,6 +46,9 @@
     "appId": "com.huizhilll.rubikey",
     "productName": "RubiKey",
     "asar": true,
+    "asarUnpack": [
+      "dist-electron/main/preload.cjs"
+    ],
     "directories": {
       "output": "release"
     },

@@ -1,7 +1,7 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("rubikey", {
-  version: "0.1.0",
+  version: "0.1.1",
   executeActionForMove(move) {
     return ipcRenderer.invoke("macro:execute-for-move", move);
   },

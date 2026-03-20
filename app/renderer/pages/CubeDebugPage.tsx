@@ -117,9 +117,19 @@ function cloneProfilesConfig(config: ProfileConfig): ProfileConfig {
   };
 }
 
+function getRubikeyApi() {
+  if (!window.rubikey) {
+    throw new Error("RubiKey preload API 未注入，请彻底退出后重新打开应用，或重新打包 portable 版本。");
+  }
+
+  return window.rubikey;
+}
+
 export function CubeDebugPage() {
   const driverRef = useRef<GanCubeDriver | null>(null);
   const mappingEnabledRef = useRef(false);
+  const hasLoadedProfilesRef = useRef(false);
+  const saveTimerRef = useRef<number | null>(null);
   const [activeView, setActiveView] = useState<ViewKey>("home");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.localStorage.getItem("rubikey.sidebar.collapsed") === "1");
   const [theme, setTheme] = useState<ThemeKey>(() => {
@@ -144,7 +154,7 @@ export function CubeDebugPage() {
     () => typeof navigator !== "undefined" && "bluetooth" in navigator,
     []
   );
-  const appVersion = useMemo(() => window.rubikey?.version ?? "0.1.0", []);
+  const appVersion = useMemo(() => window.rubikey?.version ?? "unknown", []);
 
   const activeProfile = useMemo(
     () => profileConfig.profiles.find((profile) => profile.id === profileConfig.activeProfileId) ?? profileConfig.profiles[0] ?? null,
@@ -163,6 +173,7 @@ export function CubeDebugPage() {
   }, [sidebarCollapsed]);
 
   useEffect(() => {
+    document.documentElement.dataset.theme = theme;
     document.body.dataset.theme = theme;
     window.localStorage.setItem(THEME_STORAGE_KEY, theme);
   }, [theme]);
@@ -179,21 +190,46 @@ export function CubeDebugPage() {
   useEffect(() => {
     void (async () => {
       const [loadedProfiles, loadedRuntime] = await Promise.all([
-        window.rubikey.loadProfileConfig(),
-        window.rubikey.getRuntimeState()
+        getRubikeyApi().loadProfileConfig(),
+        getRubikeyApi().getRuntimeState()
       ]);
       setProfileConfig(loadedProfiles);
       setRuntimeState(loadedRuntime);
       setSaveState(`已加载 ${formatTime(loadedProfiles.updatedAt)}`);
-    })();
+      hasLoadedProfilesRef.current = true;
+    })().catch((error) => {
+      console.error(error);
+      setSaveState(error instanceof Error ? error.message : "读取配置失败");
+    });
   }, []);
+
+  useEffect(() => {
+    if (!hasLoadedProfilesRef.current || saveState !== "待保存") {
+      return;
+    }
+
+    if (saveTimerRef.current) {
+      window.clearTimeout(saveTimerRef.current);
+    }
+
+    saveTimerRef.current = window.setTimeout(() => {
+      void saveProfiles();
+    }, 500);
+
+    return () => {
+      if (saveTimerRef.current) {
+        window.clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+    };
+  }, [profileConfig, saveState]);
 
   useEffect(() => {
     const driver = new GanCubeDriver();
     driver.setMoveListener((event) => {
       setMoveLogs((prev) => [event, ...prev].slice(0, 24));
       if (mappingEnabledRef.current) {
-        void window.rubikey.executeActionForMove(event.move).then((result) => {
+        void getRubikeyApi().executeActionForMove(event.move).then((result) => {
           if (result) {
             setExecutionHints((prev) => [
               `${formatTime(result.timestamp)} · ${event.move} -> ${result.detail}`,
@@ -260,17 +296,17 @@ export function CubeDebugPage() {
   }
 
   async function toggleRuntimeEnabled() {
-    const next = await window.rubikey.toggleEnabled();
+    const next = await getRubikeyApi().toggleEnabled();
     setRuntimeState(next);
   }
 
   async function triggerEmergencyStop() {
-    const result = await window.rubikey.emergencyStop();
+    const result = await getRubikeyApi().emergencyStop();
     setExecutionHints((prev) => [
       `${formatTime(result.timestamp)} · 急停 -> ${result.detail}`,
       ...prev
     ].slice(0, 18));
-    const runtime = await window.rubikey.getRuntimeState();
+    const runtime = await getRubikeyApi().getRuntimeState();
     setRuntimeState(runtime);
   }
 
@@ -376,18 +412,28 @@ export function CubeDebugPage() {
   }
 
   async function saveProfiles() {
-    const saved = await window.rubikey.saveProfileConfig({
-      ...profileConfig,
-      updatedAt: Date.now(),
-      profiles: profileConfig.profiles.map((profile) => ({
-        ...profile,
-        updatedAt: profile.id === profileConfig.activeProfileId ? Date.now() : profile.updatedAt
-      }))
-    });
-    setProfileConfig(saved);
-    setSaveState(`已保存 ${formatTime(saved.updatedAt)}`);
-    const runtime = await window.rubikey.getRuntimeState();
-    setRuntimeState(runtime);
+    if (saveTimerRef.current) {
+      window.clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+
+    try {
+      const saved = await getRubikeyApi().saveProfileConfig({
+        ...profileConfig,
+        updatedAt: Date.now(),
+        profiles: profileConfig.profiles.map((profile) => ({
+          ...profile,
+          updatedAt: profile.id === profileConfig.activeProfileId ? Date.now() : profile.updatedAt
+        }))
+      });
+      setProfileConfig(saved);
+      setSaveState(`已保存 ${formatTime(saved.updatedAt)}`);
+      const runtime = await getRubikeyApi().getRuntimeState();
+      setRuntimeState(runtime);
+    } catch (error) {
+      console.error(error);
+      setSaveState(error instanceof Error ? `保存失败：${error.message}` : "保存失败");
+    }
   }
 
   function renderHome() {

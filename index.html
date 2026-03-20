@@ -4,6 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>RubiKey</title>
+    <script>
+      try {
+        const savedTheme = window.localStorage.getItem("rubikey.theme");
+        const initialTheme = savedTheme === "blossom" ? "blossom" : "mist";
+        document.documentElement.dataset.theme = initialTheme;
+      } catch {
+        document.documentElement.dataset.theme = "mist";
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
