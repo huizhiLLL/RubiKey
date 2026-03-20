@@ -5,3 +5,4 @@ dist-electron/
 AGENTS.md
 release/
 .electron-builder-cache/
+ref/
