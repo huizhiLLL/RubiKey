@@ -19,12 +19,13 @@ import {
 import type { RuntimeState } from "@shared/runtime";
 import { ALL_MOVES, type CubeMoveEvent, type MoveToken } from "@shared/move";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Activity, BookOpenText, Compass, House, Info, PanelLeftClose, PanelLeftOpen, Plus, Save, Sparkles, Trash2 } from "lucide-react";
+import { Activity, BookOpenText, Compass, House, Info, Palette, PanelLeftClose, PanelLeftOpen, Plus, Save, Sparkles, Trash2 } from "lucide-react";
 import { GanCubeDriver } from "../../cube/gan/driver";
 import type { GanDebugEntry } from "../../cube/gan/protocol";
 
 type ConnectionStatus = "disconnected" | "connecting" | "connected" | "error";
 type ViewKey = "home" | "profiles" | "moves" | "actions" | "diagnostics" | "about";
+type ThemeKey = "blossom" | "mist";
 
 const NAV_ITEMS: Array<{ key: ViewKey; label: string; hint: string; icon: ReactNode }> = [
   { key: "home", label: "首页", hint: "", icon: <House size={18} strokeWidth={1.9} /> },
@@ -36,6 +37,7 @@ const NAV_ITEMS: Array<{ key: ViewKey; label: string; hint: string; icon: ReactN
 ];
 
 const REPOSITORY_URL = "https://github.com/huizhiLLL/RubiKey";
+const THEME_STORAGE_KEY = "rubikey.theme";
 
 function formatTime(timestamp: number) {
   return new Date(timestamp).toLocaleTimeString("zh-CN", {
@@ -120,6 +122,10 @@ export function CubeDebugPage() {
   const mappingEnabledRef = useRef(false);
   const [activeView, setActiveView] = useState<ViewKey>("home");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.localStorage.getItem("rubikey.sidebar.collapsed") === "1");
+  const [theme, setTheme] = useState<ThemeKey>(() => {
+    const savedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
+    return savedTheme === "blossom" ? "blossom" : "mist";
+  });
   const [status, setStatus] = useState<ConnectionStatus>("disconnected");
   const [deviceName, setDeviceName] = useState<string>("未连接");
   const [protocol, setProtocol] = useState<string>("unknown");
@@ -155,6 +161,11 @@ export function CubeDebugPage() {
   useEffect(() => {
     window.localStorage.setItem("rubikey.sidebar.collapsed", sidebarCollapsed ? "1" : "0");
   }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    document.body.dataset.theme = theme;
+    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+  }, [theme]);
 
   useEffect(() => {
     if (!pendingMove && availableMoves.length > 0) {
@@ -393,6 +404,19 @@ export function CubeDebugPage() {
             <div className="summary-card"><span>连接</span><strong>{getStatusLabel(status)}</strong></div>
             <div className="summary-card"><span>当前激活方案</span><strong>{activeProfile?.name ?? "未选择"}</strong></div>
             <div className="summary-card"><span>系统状态</span><strong>{runtimeState?.enabled ? "运行中" : "已暂停"}</strong></div>
+          </div>
+          <div className="mac-input-card">
+            <label className="field-block" htmlFor="gan-manual-mac">
+              <span className="mac-input-label">建议手动输入MAC地址以防自动获取设备MAC地址失败/错误</span>
+              <input
+                id="gan-manual-mac"
+                value={manualMac}
+                onChange={(event) => handleMacChange(event.target.value)}
+                placeholder="AA:BB:CC:DD:EE:FF"
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </label>
           </div>
           <div className="button-row wrap">
             <button onClick={handleConnect} disabled={status === "connecting" || !canUseBluetooth}>{status === "connecting" ? "连接中..." : "连接 GAN"}</button>
@@ -683,6 +707,10 @@ export function CubeDebugPage() {
     }
   }
 
+  function toggleTheme() {
+    setTheme((prev) => prev === "blossom" ? "mist" : "blossom");
+  }
+
   return (
     <main className={sidebarCollapsed ? "app-shell collapsed" : "app-shell"}>
       <div className="page-backdrop" />
@@ -714,6 +742,24 @@ export function CubeDebugPage() {
             </button>
           ))}
         </nav>
+
+        <div className="sidebar-footer">
+          {sidebarCollapsed ? null : (
+            <div className="theme-meta">
+              <span>主题风格</span>
+              <strong>{theme === "mist" ? "淡蓝简洁" : "樱粉和风"}</strong>
+            </div>
+          )}
+          <button
+            className="ghost theme-switch"
+            title={theme === "mist" ? "切换到樱粉和风主题" : "切换到淡蓝简洁主题"}
+            aria-label={theme === "mist" ? "切换到樱粉和风主题" : "切换到淡蓝简洁主题"}
+            onClick={toggleTheme}
+          >
+            <span className="nav-glyph"><Palette size={16} strokeWidth={1.9} /></span>
+            {sidebarCollapsed ? null : <strong>{theme === "mist" ? "切回樱粉" : "切换淡蓝"}</strong>}
+          </button>
+        </div>
       </aside>
 
       <section className="workspace-panel">{renderContent()}</section>
