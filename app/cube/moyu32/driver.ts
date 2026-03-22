@@ -1,4 +1,5 @@
-import type { CubeConnectionOptions, CubeModelRegistration, DebugListener, MoveListener, SmartCubeDriver } from "../core/types";
+import type { CubeGyroEvent } from "@shared/gyro";
+import type { CubeConnectionOptions, CubeModelRegistration, DebugListener, GyroListener, MoveListener, SmartCubeDriver } from "../core/types";
 import { normalizeMac, promptForMacAddress, readAdvertisementValue, rememberMac } from "../core/mac";
 import { Moyu32PacketParser } from "./parser";
 import {
@@ -18,22 +19,51 @@ export class Moyu32CubeDriver implements SmartCubeDriver {
   private readCharacteristic: BluetoothRemoteGATTCharacteristic | null = null;
   private writeCharacteristic: BluetoothRemoteGATTCharacteristic | null = null;
   private moveListener: MoveListener = () => undefined;
+  private gyroListener: GyroListener = (_event: CubeGyroEvent) => undefined;
   private debugListener: DebugListener = () => undefined;
   private parser = new Moyu32PacketParser();
   private protocol: Moyu32ProtocolVersion = "unknown";
   private macAddress: string | null = null;
-  private boundNotificationHandler = (event: Event) => {
+  private gyroSupported = false;
+  private gyroEnabled = false;
+  private gyroRequested = false;
+  private desiredGyroEnabled = false;
+  private boundNotificationHandler = async (event: Event) => {
     const target = event.target as BluetoothRemoteGATTCharacteristic | null;
     if (!target?.value) {
       return;
     }
-    const { debug, moves } = this.parser.parseNotification(this.protocol, target.value);
+    const { debug, moves, gyroEvents, state } = this.parser.parseNotification(this.protocol, target.value);
+    if (state.protocol) {
+      this.protocol = state.protocol;
+    }
+    if (state.gyroSupported != null) {
+      this.gyroSupported = state.gyroSupported;
+    }
+    if (state.gyroEnabled != null) {
+      this.gyroEnabled = state.gyroEnabled;
+    }
     debug.forEach((entry) => this.debug(entry.kind, entry.message, entry.hex, entry.protocol));
     moves.forEach((move) => this.moveListener(move));
+    gyroEvents.forEach((gyroEvent) => this.gyroListener(gyroEvent));
+
+    if (
+      this.desiredGyroEnabled
+      && this.gyroSupported
+      && !this.gyroRequested
+      && ((state.gyroFunctional ?? false) || state.protocol === "moyu32-v10ai")
+    ) {
+      this.gyroRequested = true;
+      await this.sendGyroToggle(true);
+    }
   };
 
   setMoveListener(listener: MoveListener) {
     this.moveListener = listener;
+  }
+
+  setGyroListener(listener: GyroListener) {
+    this.gyroListener = listener;
   }
 
   setDebugListener(listener: DebugListener) {
@@ -49,13 +79,19 @@ export class Moyu32CubeDriver implements SmartCubeDriver {
       brand: "moyu32" as const,
       protocol: this.protocol,
       deviceName: this.device?.name ?? null,
-      macAddress: this.macAddress
+      macAddress: this.macAddress,
+      gyroSupported: this.gyroSupported,
+      gyroEnabled: this.gyroEnabled
     };
   }
 
   async connect(device: BluetoothDevice, options?: CubeConnectionOptions) {
     this.device = device;
     this.protocol = "moyu32";
+    this.desiredGyroEnabled = Boolean(options?.gyroEnabled);
+    this.gyroSupported = false;
+    this.gyroEnabled = false;
+    this.gyroRequested = false;
     this.device.addEventListener("gattserverdisconnected", this.handleDisconnect);
     this.debug("info", `Selected device: ${device.name ?? "Unknown device"}`);
 
@@ -126,6 +162,9 @@ export class Moyu32CubeDriver implements SmartCubeDriver {
     this.device = null;
     this.protocol = "unknown";
     this.macAddress = null;
+    this.gyroSupported = false;
+    this.gyroEnabled = false;
+    this.gyroRequested = false;
     this.debug("info", "Disconnected from Moyu32 device.");
   }
 
@@ -134,6 +173,9 @@ export class Moyu32CubeDriver implements SmartCubeDriver {
     this.readCharacteristic = null;
     this.writeCharacteristic = null;
     this.gatt = null;
+    this.gyroSupported = false;
+    this.gyroEnabled = false;
+    this.gyroRequested = false;
   };
 
   private async tryReadMacAddress(device: BluetoothDevice) {
@@ -186,6 +228,24 @@ export class Moyu32CubeDriver implements SmartCubeDriver {
   private async sendSimpleRequest(opcode: number) {
     const payload = new Array(20).fill(0);
     payload[0] = opcode;
+    await this.sendRequest(payload);
+  }
+
+  async setGyroEnabled(enabled: boolean) {
+    this.desiredGyroEnabled = enabled;
+
+    if (!this.isConnected() || !this.gyroSupported) {
+      return;
+    }
+
+    this.gyroRequested = enabled;
+    await this.sendGyroToggle(enabled);
+  }
+
+  private async sendGyroToggle(enabled: boolean) {
+    const payload = new Array(20).fill(0);
+    payload[0] = 172;
+    payload[2] = enabled ? 1 : 0;
     await this.sendRequest(payload);
   }
 

@@ -1,4 +1,5 @@
 import { createDefaultKeyboardAction, type MacroActionConfig } from "./macro.js";
+import { createDefaultGyroMouseConfig, normalizeGyroMouseConfig, type GyroMouseConfig } from "./gyro.js";
 import { ALL_MOVES, type MoveToken } from "./move.js";
 import defaultProfiles from "./default-profiles.json" with { type: "json" };
 
@@ -13,6 +14,7 @@ export interface MappingProfile {
 
 export interface ProfileConfig {
   enabled: boolean;
+  gyroMouse: GyroMouseConfig;
   activeProfileId: string;
   profiles: MappingProfile[];
   updatedAt: number;
@@ -69,10 +71,15 @@ export function createDefaultProfileConfig(): ProfileConfig {
 
   return {
     enabled: true,
+    gyroMouse: createDefaultGyroMouseConfig(),
     activeProfileId: safeFirstProfile.id,
     profiles: [safeFirstProfile, ...restProfiles],
     updatedAt: Date.now()
   };
+}
+
+export function normalizeGyroMouseSettings(input?: Partial<GyroMouseConfig> | null) {
+  return normalizeGyroMouseConfig(input);
 }
 
 export function createFallbackAction(): MacroActionConfig {

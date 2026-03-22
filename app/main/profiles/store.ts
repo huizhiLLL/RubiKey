@@ -3,6 +3,7 @@ import path from "node:path";
 import {
   createBlankProfile,
   createDefaultProfileConfig,
+  normalizeGyroMouseSettings,
   normalizeProfileRules,
   type MappingProfile,
   type ProfileConfig
@@ -39,6 +40,7 @@ export class ProfileStore {
 
     return {
       enabled: input.enabled ?? true,
+      gyroMouse: normalizeGyroMouseSettings(input.gyroMouse),
       activeProfileId,
       profiles: safeProfiles,
       updatedAt: input.updatedAt ?? Date.now()

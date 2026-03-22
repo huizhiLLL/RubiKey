@@ -1,9 +1,11 @@
 import type { CubeMoveEvent } from "@shared/move";
+import type { CubeGyroEvent } from "@shared/gyro";
 
 export type CubeBrand = "gan" | "moyu32";
 
 export interface CubeConnectionOptions {
   preferredMac?: string | null;
+  gyroEnabled?: boolean;
 }
 
 export interface CubeDeviceInfo {
@@ -11,6 +13,8 @@ export interface CubeDeviceInfo {
   protocol: string;
   deviceName: string | null;
   macAddress: string | null;
+  gyroSupported: boolean;
+  gyroEnabled: boolean;
 }
 
 export interface CubeDebugEntry {
@@ -23,6 +27,7 @@ export interface CubeDebugEntry {
 }
 
 export type MoveListener = (event: CubeMoveEvent) => void;
+export type GyroListener = (event: CubeGyroEvent) => void;
 export type DebugListener = (entry: CubeDebugEntry) => void;
 
 export interface SmartCubeDriver {
@@ -30,7 +35,9 @@ export interface SmartCubeDriver {
   disconnect(): Promise<void>;
   isConnected(): boolean;
   setMoveListener(listener: MoveListener): void;
+  setGyroListener(listener: GyroListener): void;
   setDebugListener(listener: DebugListener): void;
+  setGyroEnabled?(enabled: boolean): Promise<void> | void;
   getDeviceInfo(): CubeDeviceInfo;
 }
 

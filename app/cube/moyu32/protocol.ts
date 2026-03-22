@@ -1,7 +1,7 @@
 import type { CubeDebugEntry } from "../core/types";
 import { bytesToHex, normalizeUuid } from "../core/utils";
 
-export type Moyu32ProtocolVersion = "moyu32" | "unknown";
+export type Moyu32ProtocolVersion = "moyu32" | "moyu32-v10ai" | "unknown";
 
 export const MOYU32_NAME_PREFIXES = ["WCU_MY3"] as const;
 

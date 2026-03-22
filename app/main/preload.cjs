@@ -19,5 +19,17 @@ contextBridge.exposeInMainWorld("rubikey", {
   },
   emergencyStop() {
     return ipcRenderer.invoke("runtime:emergency-stop");
+  },
+  pushGyroEvent(event) {
+    ipcRenderer.send("gyro:event", event);
+  },
+  setGyroSupported(supported) {
+    ipcRenderer.send("gyro:support", supported);
+  },
+  clearGyroDevice() {
+    ipcRenderer.send("gyro:clear");
+  },
+  resetGyroNeutral() {
+    return ipcRenderer.invoke("gyro:reset-neutral");
   }
 });

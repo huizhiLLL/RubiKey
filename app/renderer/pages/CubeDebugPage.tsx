@@ -16,6 +16,12 @@ import {
   getUnboundMoves,
   type ProfileConfig
 } from "@shared/profiles";
+import {
+  createGyroBasis,
+  createIdleGyroPreviewState,
+  evaluateGyroMouse,
+  type CubeGyroEvent
+} from "@shared/gyro";
 import type { RuntimeState } from "@shared/runtime";
 import { ALL_MOVES, type CubeMoveEvent, type MoveToken } from "@shared/move";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -102,7 +108,7 @@ function getDiagnosticsSummary(status: ConnectionStatus, errorText: string, debu
   return {
     tone: debugCount > 0 ? "pending" as const : "idle" as const,
     title: "设备尚未连接",
-    detail: "当前没有活跃的 GAN 连接。",
+    detail: "当前没有活跃的智能魔方连接。",
     action: "点击“连接智能魔方”开始连接；如果设备曾经连接过，可以结合下方日志回看最近一次连接过程。"
   };
 }
@@ -110,6 +116,7 @@ function getDiagnosticsSummary(status: ConnectionStatus, errorText: string, debu
 function cloneProfilesConfig(config: ProfileConfig): ProfileConfig {
   return {
     ...config,
+    gyroMouse: { ...config.gyroMouse },
     profiles: config.profiles.map((profile) => ({
       ...profile,
       rules: { ...profile.rules }
@@ -122,7 +129,13 @@ function getRubikeyApi() {
     throw new Error("RubiKey preload API 未注入，请彻底退出后重新打开应用，或重新打包 portable 版本。");
   }
 
-  return window.rubikey;
+  return {
+    ...window.rubikey,
+    pushGyroEvent: window.rubikey.pushGyroEvent ?? (() => undefined),
+    setGyroSupported: window.rubikey.setGyroSupported ?? (() => undefined),
+    clearGyroDevice: window.rubikey.clearGyroDevice ?? (() => undefined),
+    resetGyroNeutral: window.rubikey.resetGyroNeutral ?? (() => Promise.resolve(true))
+  };
 }
 
 export function CubeDebugPage() {
@@ -130,6 +143,9 @@ export function CubeDebugPage() {
   const mappingEnabledRef = useRef(false);
   const hasLoadedProfilesRef = useRef(false);
   const saveTimerRef = useRef<number | null>(null);
+  const gyroConfigRef = useRef(createDefaultProfileConfig().gyroMouse);
+  const gyroBasisRef = useRef<ReturnType<typeof createGyroBasis> | null>(null);
+  const gyroPreviewRef = useRef(createIdleGyroPreviewState());
   const [activeView, setActiveView] = useState<ViewKey>("home");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.localStorage.getItem("rubikey.sidebar.collapsed") === "1");
   const [theme, setTheme] = useState<ThemeKey>(() => {
@@ -142,6 +158,9 @@ export function CubeDebugPage() {
   const [protocol, setProtocol] = useState<string>("unknown");
   const [manualMac, setManualMac] = useState<string>(() => getRememberedMac());
   const [resolvedMac, setResolvedMac] = useState<string>("-");
+  const [gyroSupported, setGyroSupported] = useState(false);
+  const [gyroDeviceEnabled, setGyroDeviceEnabled] = useState(false);
+  const [gyroPreview, setGyroPreview] = useState(createIdleGyroPreviewState());
   const [errorText, setErrorText] = useState<string>("");
   const [profileConfig, setProfileConfig] = useState<ProfileConfig>(createDefaultProfileConfig());
   const [runtimeState, setRuntimeState] = useState<RuntimeState | null>(null);
@@ -168,6 +187,10 @@ export function CubeDebugPage() {
   useEffect(() => {
     mappingEnabledRef.current = runtimeState?.enabled ?? true;
   }, [runtimeState?.enabled]);
+
+  useEffect(() => {
+    gyroConfigRef.current = profileConfig.gyroMouse;
+  }, [profileConfig.gyroMouse]);
 
   useEffect(() => {
     window.localStorage.setItem("rubikey.sidebar.collapsed", sidebarCollapsed ? "1" : "0");
@@ -240,6 +263,29 @@ export function CubeDebugPage() {
         });
       }
     });
+    driver.setGyroListener((event: CubeGyroEvent) => {
+      getRubikeyApi().pushGyroEvent(event);
+
+      if (!gyroBasisRef.current) {
+        gyroBasisRef.current = createGyroBasis(event.quaternion);
+        const nextPreview = {
+          ...createIdleGyroPreviewState(),
+          basisReady: true
+        };
+        gyroPreviewRef.current = nextPreview;
+        setGyroPreview(nextPreview);
+        return;
+      }
+
+      const nextPreview = evaluateGyroMouse(
+        gyroBasisRef.current,
+        event.quaternion,
+        gyroConfigRef.current,
+        gyroPreviewRef.current
+      );
+      gyroPreviewRef.current = nextPreview;
+      setGyroPreview(nextPreview);
+    });
     driver.setDebugListener((entry) => {
       setDebugLogs((prev) => [entry, ...prev].slice(0, 36));
       const deviceInfo = driver.getDeviceInfo();
@@ -247,27 +293,56 @@ export function CubeDebugPage() {
       setProtocol(deviceInfo.protocol);
       setDeviceName(deviceInfo.deviceName ?? "未连接");
       setResolvedMac(deviceInfo.macAddress ?? "-");
+      setGyroSupported(deviceInfo.gyroSupported);
+      setGyroDeviceEnabled(deviceInfo.gyroEnabled);
+      getRubikeyApi().setGyroSupported(deviceInfo.gyroSupported);
     });
     driverRef.current = driver;
 
     return () => {
+      getRubikeyApi().clearGyroDevice();
       void driver.disconnect();
       driverRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    const driver = driverRef.current;
+    if (!driver || status !== "connected") {
+      return;
+    }
+
+    void driver.setGyroEnabled(profileConfig.gyroMouse.enabled);
+    if (profileConfig.gyroMouse.enabled) {
+      void resetGyroNeutral();
+    } else {
+      gyroBasisRef.current = null;
+      gyroPreviewRef.current = createIdleGyroPreviewState();
+      setGyroPreview(createIdleGyroPreviewState());
+    }
+  }, [profileConfig.gyroMouse.enabled, status]);
 
   async function handleConnect() {
     const driver = driverRef.current;
     if (!driver) return;
     setErrorText("");
     setStatus("connecting");
+    gyroBasisRef.current = null;
+    gyroPreviewRef.current = createIdleGyroPreviewState();
+    setGyroPreview(createIdleGyroPreviewState());
     try {
-      await driver.connect({ preferredMac: manualMac || null });
+      await driver.connect({
+        preferredMac: manualMac || null,
+        gyroEnabled: profileConfig.gyroMouse.enabled
+      });
       const deviceInfo = driver.getDeviceInfo();
       setBrand(deviceInfo.brand);
       setProtocol(deviceInfo.protocol);
       setDeviceName(deviceInfo.deviceName ?? "未知设备");
       setResolvedMac(deviceInfo.macAddress ?? "-");
+      setGyroSupported(deviceInfo.gyroSupported);
+      setGyroDeviceEnabled(deviceInfo.gyroEnabled);
+      getRubikeyApi().setGyroSupported(deviceInfo.gyroSupported);
       setStatus("connected");
     } catch (error) {
       console.error(error);
@@ -280,11 +355,17 @@ export function CubeDebugPage() {
     const driver = driverRef.current;
     if (!driver) return;
     await driver.disconnect();
+    getRubikeyApi().clearGyroDevice();
     setStatus("disconnected");
     setBrand("unknown");
     setProtocol("unknown");
     setDeviceName("未连接");
     setResolvedMac("-");
+    setGyroSupported(false);
+    setGyroDeviceEnabled(false);
+    gyroBasisRef.current = null;
+    gyroPreviewRef.current = createIdleGyroPreviewState();
+    setGyroPreview(createIdleGyroPreviewState());
   }
 
   function handleMacChange(value: string) {
@@ -314,6 +395,14 @@ export function CubeDebugPage() {
     ].slice(0, 18));
     const runtime = await getRubikeyApi().getRuntimeState();
     setRuntimeState(runtime);
+  }
+
+  async function resetGyroNeutral() {
+    gyroBasisRef.current = null;
+    const nextPreview = createIdleGyroPreviewState();
+    gyroPreviewRef.current = nextPreview;
+    setGyroPreview(nextPreview);
+    await getRubikeyApi().resetGyroNeutral();
   }
 
   function selectProfile(profileId: string) {
@@ -417,6 +506,22 @@ export function CubeDebugPage() {
     });
   }
 
+  function updateGyroNumber<K extends "deadzonePitchDeg" | "deadzoneRollDeg" | "fastPitchDeg" | "fastRollDeg" | "slowStepPx" | "fastStepPx" | "intervalMs">(
+    key: K,
+    value: string
+  ) {
+    const next = Number.parseInt(value || "0", 10) || 0;
+    patchConfig((draft) => {
+      draft.gyroMouse[key] = next as ProfileConfig["gyroMouse"][K];
+    });
+  }
+
+  function updateGyroBoolean<K extends "enabled" | "swapAxes" | "invertHorizontal" | "invertVertical">(key: K, value: boolean) {
+    patchConfig((draft) => {
+      draft.gyroMouse[key] = value as ProfileConfig["gyroMouse"][K];
+    });
+  }
+
   async function saveProfiles() {
     if (saveTimerRef.current) {
       window.clearTimeout(saveTimerRef.current);
@@ -456,6 +561,8 @@ export function CubeDebugPage() {
             <div className="summary-card"><span>连接</span><strong>{getStatusLabel(status)}</strong></div>
             <div className="summary-card"><span>当前激活方案</span><strong>{activeProfile?.name ?? "未选择"}</strong></div>
             <div className="summary-card"><span>系统状态</span><strong>{runtimeState?.enabled ? "运行中" : "已暂停"}</strong></div>
+            <div className="summary-card"><span>陀螺仪支持</span><strong>{gyroSupported ? "支持" : "未检测到"}</strong></div>
+            <div className="summary-card"><span>陀螺仪鼠标</span><strong>{profileConfig.gyroMouse.enabled ? "已启用" : "已关闭"}</strong></div>
           </div>
           <div className="mac-input-card">
             <label className="field-block" htmlFor="gan-manual-mac">
@@ -476,6 +583,73 @@ export function CubeDebugPage() {
             <button className="ghost" onClick={toggleRuntimeEnabled}>{runtimeState?.enabled ? "暂停系统" : "启动映射"}</button>
             <button className="danger" onClick={triggerEmergencyStop}>紧急停止</button>
           </div>
+
+          <section className="panel-subsection add-binding-box">
+            <div className="panel-head compact-head">
+              <div>
+                <h3>陀螺仪鼠标</h3>
+              </div>
+              <button className="ghost" onClick={resetGyroNeutral} disabled={status !== "connected" || !profileConfig.gyroMouse.enabled}>
+                重置中立姿态
+              </button>
+            </div>
+            <div className="rule-editor-grid">
+              <label className="rule-control">
+                <span>启用功能</span>
+                <input
+                  type="checkbox"
+                  checked={profileConfig.gyroMouse.enabled}
+                  onChange={(event) => updateGyroBoolean("enabled", event.target.checked)}
+                />
+              </label>
+              <label className="rule-control">
+                <span>上下阈值</span>
+                <input type="number" min={4} max={75} value={profileConfig.gyroMouse.deadzonePitchDeg} onChange={(event) => updateGyroNumber("deadzonePitchDeg", event.target.value)} />
+              </label>
+              <label className="rule-control">
+                <span>左右阈值</span>
+                <input type="number" min={4} max={75} value={profileConfig.gyroMouse.deadzoneRollDeg} onChange={(event) => updateGyroNumber("deadzoneRollDeg", event.target.value)} />
+              </label>
+              <label className="rule-control">
+                <span>上下高速阈值</span>
+                <input type="number" min={6} max={89} value={profileConfig.gyroMouse.fastPitchDeg} onChange={(event) => updateGyroNumber("fastPitchDeg", event.target.value)} />
+              </label>
+              <label className="rule-control">
+                <span>左右高速阈值</span>
+                <input type="number" min={6} max={89} value={profileConfig.gyroMouse.fastRollDeg} onChange={(event) => updateGyroNumber("fastRollDeg", event.target.value)} />
+              </label>
+              <label className="rule-control">
+                <span>低速步长</span>
+                <input type="number" min={1} max={80} value={profileConfig.gyroMouse.slowStepPx} onChange={(event) => updateGyroNumber("slowStepPx", event.target.value)} />
+              </label>
+              <label className="rule-control">
+                <span>高速步长</span>
+                <input type="number" min={1} max={120} value={profileConfig.gyroMouse.fastStepPx} onChange={(event) => updateGyroNumber("fastStepPx", event.target.value)} />
+              </label>
+              <label className="rule-control">
+                <span>刷新间隔 ms</span>
+                <input type="number" min={10} max={80} value={profileConfig.gyroMouse.intervalMs} onChange={(event) => updateGyroNumber("intervalMs", event.target.value)} />
+              </label>
+              <label className="rule-control">
+                <span>交换上下左右轴</span>
+                <input type="checkbox" checked={profileConfig.gyroMouse.swapAxes} onChange={(event) => updateGyroBoolean("swapAxes", event.target.checked)} />
+              </label>
+              <label className="rule-control">
+                <span>反转左右</span>
+                <input type="checkbox" checked={profileConfig.gyroMouse.invertHorizontal} onChange={(event) => updateGyroBoolean("invertHorizontal", event.target.checked)} />
+              </label>
+              <label className="rule-control">
+                <span>反转上下</span>
+                <input type="checkbox" checked={profileConfig.gyroMouse.invertVertical} onChange={(event) => updateGyroBoolean("invertVertical", event.target.checked)} />
+              </label>
+            </div>
+            <div className="profile-preview-meta">
+              <div className="mini-key-value"><span>设备侧 Gyro</span><strong>{gyroDeviceEnabled ? "已开启" : "未开启"}</strong></div>
+              <div className="mini-key-value"><span>Pitch</span><strong>{gyroPreview.pitchDeg.toFixed(1)}°</strong></div>
+              <div className="mini-key-value"><span>Roll</span><strong>{gyroPreview.rollDeg.toFixed(1)}°</strong></div>
+              <div className="mini-key-value"><span>方向</span><strong>{gyroPreview.horizontalDirection}/{gyroPreview.verticalDirection}</strong></div>
+            </div>
+          </section>
         </section>
 
         <article className="home-profile-preview">
@@ -485,7 +659,7 @@ export function CubeDebugPage() {
             </div>
             <button className="ghost" onClick={() => setActiveView("profiles")}>前往编辑</button>
           </div>
-          <div className="profile-preview-meta">
+            <div className="profile-preview-meta">
             <div className="mini-key-value"><span>当前激活方案</span><strong>{activeProfile?.name ?? "未选择"}</strong></div>
             <div className="mini-key-value"><span>已绑定转动</span><strong>{boundMoves.length} 项</strong></div>
             <div className="mini-key-value"><span>当前品牌</span><strong>{brand}</strong></div>

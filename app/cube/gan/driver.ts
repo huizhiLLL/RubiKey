@@ -1,6 +1,7 @@
 import type { CubeMoveEvent } from "../../shared/move";
 import { normalizeMac, promptForMacAddress, readAdvertisementValue, rememberMac } from "../core/mac";
-import type { CubeConnectionOptions, CubeModelRegistration, DebugListener, MoveListener, SmartCubeDriver } from "../core/types";
+import type { CubeGyroEvent } from "../../shared/gyro";
+import type { CubeConnectionOptions, CubeModelRegistration, DebugListener, GyroListener, MoveListener, SmartCubeDriver } from "../core/types";
 import { GanPacketParser } from "./parser";
 import {
   bytesToHex,
@@ -18,6 +19,7 @@ export class GanCubeDriver implements SmartCubeDriver {
   private readCharacteristic: BluetoothRemoteGATTCharacteristic | null = null;
   private writeCharacteristic: BluetoothRemoteGATTCharacteristic | null = null;
   private moveListener: MoveListener = () => undefined;
+  private gyroListener: GyroListener = (_event: CubeGyroEvent) => undefined;
   private debugListener: DebugListener = () => undefined;
   private parser = new GanPacketParser();
   private protocol: GanProtocolVersion = "unknown";
@@ -34,6 +36,10 @@ export class GanCubeDriver implements SmartCubeDriver {
 
   setMoveListener(listener: MoveListener) {
     this.moveListener = listener;
+  }
+
+  setGyroListener(listener: GyroListener) {
+    this.gyroListener = listener;
   }
 
   setDebugListener(listener: DebugListener) {
@@ -61,7 +67,9 @@ export class GanCubeDriver implements SmartCubeDriver {
       brand: "gan" as const,
       protocol: this.protocol,
       deviceName: this.getDeviceName(),
-      macAddress: this.getMacAddress()
+      macAddress: this.getMacAddress(),
+      gyroSupported: false,
+      gyroEnabled: false
     };
   }
 

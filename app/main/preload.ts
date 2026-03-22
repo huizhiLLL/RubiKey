@@ -3,6 +3,7 @@ import type { MacroExecutionResult } from "../shared/macro.js";
 import type { ProfileConfig } from "../shared/profiles.js";
 import type { RuntimeState } from "../shared/runtime.js";
 import type { MoveToken } from "../shared/move.js";
+import type { CubeGyroEvent } from "../shared/gyro.js";
 
 contextBridge.exposeInMainWorld("rubikey", {
   version: "0.1.1",
@@ -23,5 +24,17 @@ contextBridge.exposeInMainWorld("rubikey", {
   },
   emergencyStop() {
     return ipcRenderer.invoke("runtime:emergency-stop") as Promise<MacroExecutionResult>;
+  },
+  pushGyroEvent(event: CubeGyroEvent) {
+    ipcRenderer.send("gyro:event", event);
+  },
+  setGyroSupported(supported: boolean) {
+    ipcRenderer.send("gyro:support", supported);
+  },
+  clearGyroDevice() {
+    ipcRenderer.send("gyro:clear");
+  },
+  resetGyroNeutral() {
+    return ipcRenderer.invoke("gyro:reset-neutral") as Promise<boolean>;
   }
 });

@@ -1,9 +1,10 @@
-import type { CubeConnectionOptions, CubeDebugEntry, CubeDeviceInfo, CubeModelRegistration, DebugListener, MoveListener, SmartCubeDriver } from "./types";
+import type { CubeConnectionOptions, CubeDebugEntry, CubeDeviceInfo, CubeModelRegistration, DebugListener, GyroListener, MoveListener, SmartCubeDriver } from "./types";
 import { uniqueNumbers, uniqueStrings } from "./utils";
 
 export class SmartCubeConnector {
   private currentDriver: SmartCubeDriver | null = null;
   private moveListener: MoveListener = () => undefined;
+  private gyroListener: GyroListener = () => undefined;
   private debugListener: DebugListener = () => undefined;
 
   constructor(private readonly models: CubeModelRegistration[]) {}
@@ -11,6 +12,11 @@ export class SmartCubeConnector {
   setMoveListener(listener: MoveListener) {
     this.moveListener = listener;
     this.currentDriver?.setMoveListener(listener);
+  }
+
+  setGyroListener(listener: GyroListener) {
+    this.gyroListener = listener;
+    this.currentDriver?.setGyroListener(listener);
   }
 
   setDebugListener(listener: DebugListener) {
@@ -27,7 +33,9 @@ export class SmartCubeConnector {
       brand: "unknown",
       protocol: "unknown",
       deviceName: null,
-      macAddress: null
+      macAddress: null,
+      gyroSupported: false,
+      gyroEnabled: false
     };
   }
 
@@ -60,6 +68,7 @@ export class SmartCubeConnector {
 
     const driver = matchedModel.createDriver();
     driver.setMoveListener(this.moveListener);
+    driver.setGyroListener(this.gyroListener);
     driver.setDebugListener((entry) => {
       this.debug({
         ...entry,
@@ -69,6 +78,10 @@ export class SmartCubeConnector {
 
     this.currentDriver = driver;
     await driver.connect(device, options);
+  }
+
+  async setGyroEnabled(enabled: boolean) {
+    await this.currentDriver?.setGyroEnabled?.(enabled);
   }
 
   async disconnect() {

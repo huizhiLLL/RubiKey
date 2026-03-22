@@ -2,7 +2,9 @@ import { app, BrowserWindow, globalShortcut, ipcMain, Menu, Tray, nativeImage } 
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import type { CubeGyroEvent } from "../shared/gyro.js";
 import { MacroExecutor } from "./macro/executor.js";
+import { GyroMouseController } from "./gyro/controller.js";
 import { ProfileStore } from "./profiles/store.js";
 import { createDefaultProfileConfig, type ProfileConfig } from "../shared/profiles.js";
 import type { RuntimeState } from "../shared/runtime.js";
@@ -22,6 +24,7 @@ let profileConfig: ProfileConfig = createDefaultProfileConfig();
 let emergencyStopCount = 0;
 let isQuitting = false;
 const macroExecutor = new MacroExecutor();
+const gyroMouseController = new GyroMouseController();
 
 function configurePortableUserDataPath() {
   const portableExecutableDir = process.env.PORTABLE_EXECUTABLE_DIR;
@@ -113,12 +116,14 @@ async function toggleEnabled() {
   profileConfig.enabled = !profileConfig.enabled;
   profileConfig.updatedAt = Date.now();
   profileConfig = await getProfileStore().save(profileConfig);
+  gyroMouseController.setSystemEnabled(profileConfig.enabled);
   updateTrayMenu();
   return getRuntimeState();
 }
 
 async function emergencyStop() {
   const result = await macroExecutor.emergencyStop();
+  gyroMouseController.emergencyStop();
   emergencyStopCount += 1;
   updateTrayMenu();
   return result;
@@ -222,12 +227,27 @@ function createTray() {
 ipcMain.handle("profiles:load", async () => profileConfig);
 ipcMain.handle("profiles:save", async (_event, nextConfig: ProfileConfig) => {
   profileConfig = await getProfileStore().save(nextConfig);
+  gyroMouseController.setConfig(profileConfig.gyroMouse);
+  gyroMouseController.setSystemEnabled(profileConfig.enabled);
   updateTrayMenu();
   return profileConfig;
 });
 ipcMain.handle("runtime:get-state", async () => getRuntimeState());
 ipcMain.handle("runtime:toggle-enabled", async () => toggleEnabled());
 ipcMain.handle("runtime:emergency-stop", async () => emergencyStop());
+ipcMain.on("gyro:event", (_event, nextEvent: CubeGyroEvent) => {
+  gyroMouseController.handleGyroEvent(nextEvent);
+});
+ipcMain.on("gyro:support", (_event, supported: boolean) => {
+  gyroMouseController.setDeviceSupported(supported);
+});
+ipcMain.on("gyro:clear", () => {
+  gyroMouseController.clearDevice();
+});
+ipcMain.handle("gyro:reset-neutral", async () => {
+  gyroMouseController.resetNeutral();
+  return true;
+});
 
 ipcMain.handle("macro:execute-for-move", async (_event, move: MoveToken) => {
   if (!profileConfig.enabled) {
@@ -245,6 +265,8 @@ configurePortableUserDataPath();
 
 app.whenReady().then(async () => {
   profileConfig = await getProfileStore().load();
+  gyroMouseController.setConfig(profileConfig.gyroMouse);
+  gyroMouseController.setSystemEnabled(profileConfig.enabled);
   createMainWindow();
   createTray();
   registerGlobalShortcuts();
