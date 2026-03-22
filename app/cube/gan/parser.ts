@@ -1,13 +1,8 @@
-import CryptoJS from "crypto-js";
-import { decompressFromEncodedURIComponent } from "lz-string";
 import type { CubeMoveEvent, MoveToken } from "../../shared/move";
+import { decodeCompressedArray, decodeEncryptedPacket, encodeEncryptedPacket, type AesDecoder } from "../core/crypto";
+import { moveTokenFromAxisAndPow } from "../core/move";
 import type { GanDebugEntry, GanProtocolVersion } from "./protocol";
 import { bytesToHex } from "./protocol";
-
-interface GanDecoder {
-  key: number[];
-  iv: number[];
-}
 
 const KEYS = [
   "NoRgnAHANATADDWJYwMxQOxiiEcfYgSK6Hpr4TYCs0IG1OEAbDszALpA",
@@ -17,53 +12,6 @@ const KEYS = [
   "NoVgNAjAHGBMYDYCcdJgCwTFBkYVgAY9JpJYUsYBmAXSA",
   "NoRgNAbAHGAsAMkwgMyzClH0LFcArHnAJzIqIBMGWEAukA"
 ] as const;
-
-function toWordArray(bytes: number[]) {
-  const words: number[] = [];
-  for (let index = 0; index < bytes.length; index += 1) {
-    words[index >>> 2] |= bytes[index] << (24 - (index % 4) * 8);
-  }
-  return CryptoJS.lib.WordArray.create(words, bytes.length);
-}
-
-function fromWordArray(wordArray: CryptoJS.lib.WordArray) {
-  const { words, sigBytes } = wordArray;
-  const bytes: number[] = [];
-  for (let index = 0; index < sigBytes; index += 1) {
-    bytes.push((words[index >>> 2] >>> (24 - (index % 4) * 8)) & 0xff);
-  }
-  return bytes;
-}
-
-function aesEcbEncryptBlock(block: number[], key: number[]) {
-  const encrypted = CryptoJS.AES.encrypt(toWordArray(block), toWordArray(key), {
-    mode: CryptoJS.mode.ECB,
-    padding: CryptoJS.pad.NoPadding
-  });
-  return fromWordArray(encrypted.ciphertext);
-}
-
-function aesEcbDecryptBlock(block: number[], key: number[]) {
-  const decrypted = CryptoJS.AES.decrypt(
-    {
-      ciphertext: toWordArray(block)
-    } as CryptoJS.lib.CipherParams,
-    toWordArray(key),
-    {
-      mode: CryptoJS.mode.ECB,
-      padding: CryptoJS.pad.NoPadding
-    }
-  );
-  return fromWordArray(decrypted);
-}
-
-function decodeCompressedArray(value: string) {
-  const decompressed = decompressFromEncodedURIComponent(value);
-  if (!decompressed) {
-    throw new Error("Failed to decode GAN key material.");
-  }
-  return JSON.parse(decompressed) as number[];
-}
 
 function getKeyIvFromMac(mac: string, version = 0) {
   const macBytes = mac.split(":").map((part) => Number.parseInt(part, 16));
@@ -78,33 +26,8 @@ function getKeyIvFromMac(mac: string, version = 0) {
   return { key, iv };
 }
 
-function dataViewToBytes(value: DataView) {
-  const bytes: number[] = [];
-  for (let index = 0; index < value.byteLength; index += 1) {
-    bytes.push(value.getUint8(index));
-  }
-  return bytes;
-}
-
-function moveTokenFromAxisAndPow(axis: number, pow: number): MoveToken | null {
-  if (axis < 0 || axis >= 6) {
-    return null;
-  }
-  const face = "URFDLB".charAt(axis);
-  if (pow === 0) {
-    return face as MoveToken;
-  }
-  if (pow === 1) {
-    return `${face}'` as MoveToken;
-  }
-  if (pow === 2) {
-    return `${face}2` as MoveToken;
-  }
-  return null;
-}
-
 export class GanPacketParser {
-  private decoder: GanDecoder | null = null;
+  private decoder: AesDecoder | null = null;
   private previousMoveCount = -1;
 
   configure(mac: string | null, version = 0) {
@@ -116,64 +39,11 @@ export class GanPacketParser {
   }
 
   encodeRequest(payload: number[]) {
-    if (!this.decoder) {
-      return new Uint8Array(payload);
-    }
-
-    const output = payload.slice();
-    const iv = this.decoder.iv;
-
-    const encodeBlock = (block: number[]) => aesEcbEncryptBlock(block, this.decoder!.key);
-
-    for (let index = 0; index < Math.min(16, output.length); index += 1) {
-      output[index] ^= iv[index] ?? 0;
-    }
-
-    const head = encodeBlock(output.slice(0, 16));
-    for (let index = 0; index < Math.min(16, output.length); index += 1) {
-      output[index] = head[index];
-    }
-
-    if (output.length > 16) {
-      const offset = output.length - 16;
-      const tail = output.slice(offset);
-      for (let index = 0; index < 16; index += 1) {
-        tail[index] ^= iv[index] ?? 0;
-      }
-      const encodedTail = encodeBlock(tail);
-      for (let index = 0; index < 16; index += 1) {
-        output[offset + index] = encodedTail[index];
-      }
-    }
-
-    return new Uint8Array(output);
+    return encodeEncryptedPacket(payload, this.decoder);
   }
 
   decodeNotification(value: DataView) {
-    const bytes = dataViewToBytes(value);
-    if (!this.decoder) {
-      return bytes;
-    }
-
-    const decoded = bytes.slice();
-    const iv = this.decoder.iv;
-
-    if (decoded.length > 16) {
-      const offset = decoded.length - 16;
-      const tail = aesEcbDecryptBlock(decoded.slice(offset), this.decoder.key);
-      for (let index = 0; index < 16; index += 1) {
-        decoded[offset + index] = tail[index] ^ (iv[index] ?? 0);
-      }
-    }
-
-    const headLength = Math.min(16, decoded.length);
-    const headSource = decoded.slice(0, 16);
-    const head = aesEcbDecryptBlock(headSource, this.decoder.key);
-    for (let index = 0; index < headLength; index += 1) {
-      decoded[index] = head[index] ^ (iv[index] ?? 0);
-    }
-
-    return decoded;
+    return decodeEncryptedPacket(value, this.decoder);
   }
 
   parseNotification(protocol: GanProtocolVersion, value: DataView) {

@@ -1,3 +1,6 @@
+import type { CubeDebugEntry } from "../core/types";
+import { bytesToHex, normalizeUuid } from "../core/utils";
+
 export type GanProtocolVersion = "v1" | "v2" | "v3" | "v4" | "unknown";
 
 export const GAN_NAME_PREFIXES = ["GAN", "MG", "AiCube"] as const;
@@ -26,18 +29,6 @@ export const GAN_OPTIONAL_SERVICES = [
   GAN_UUIDS.v4Service
 ] as const;
 
-export interface GanDebugEntry {
-  kind: "info" | "tx" | "rx" | "warn" | "error";
-  message: string;
-  hex?: string;
-  protocol?: GanProtocolVersion;
-  timestamp: number;
-}
+export type GanDebugEntry = CubeDebugEntry;
 
-export function bytesToHex(bytes: number[]) {
-  return bytes.map((byte) => byte.toString(16).padStart(2, "0")).join(" ");
-}
-
-export function normalizeUuid(uuid: string) {
-  return uuid.toLowerCase();
-}
+export { bytesToHex, normalizeUuid };

@@ -1,4 +1,6 @@
 import type { CubeMoveEvent } from "../../shared/move";
+import { normalizeMac, promptForMacAddress, readAdvertisementValue, rememberMac } from "../core/mac";
+import type { CubeConnectionOptions, CubeModelRegistration, DebugListener, MoveListener, SmartCubeDriver } from "../core/types";
 import { GanPacketParser } from "./parser";
 import {
   bytesToHex,
@@ -9,18 +11,6 @@ import {
   type GanDebugEntry,
   type GanProtocolVersion
 } from "./protocol";
-
-export type MoveListener = (event: CubeMoveEvent) => void;
-export type DebugListener = (entry: GanDebugEntry) => void;
-
-export interface SmartCubeDriver {
-  connect(options?: { preferredMac?: string | null }): Promise<void>;
-  disconnect(): Promise<void>;
-  isConnected(): boolean;
-  setMoveListener(listener: MoveListener): void;
-}
-
-const MAC_ADDRESS_PATTERN = /^([0-9A-F]{2}:){5}[0-9A-F]{2}$/i;
 
 export class GanCubeDriver implements SmartCubeDriver {
   private device: BluetoothDevice | null = null;
@@ -66,20 +56,24 @@ export class GanCubeDriver implements SmartCubeDriver {
     return this.macAddress;
   }
 
-  async connect(options?: { preferredMac?: string | null }) {
-    this.debug("info", "Opening Bluetooth device chooser...");
-    const device = await navigator.bluetooth.requestDevice({
-      filters: GAN_NAME_PREFIXES.map((namePrefix) => ({ namePrefix })),
-      optionalServices: [...GAN_OPTIONAL_SERVICES]
-    });
+  getDeviceInfo() {
+    return {
+      brand: "gan" as const,
+      protocol: this.protocol,
+      deviceName: this.getDeviceName(),
+      macAddress: this.getMacAddress()
+    };
+  }
 
+  async connect(device: BluetoothDevice, options?: CubeConnectionOptions) {
     this.device = device;
     this.device.addEventListener("gattserverdisconnected", this.handleDisconnect);
     this.debug("info", `Selected device: ${device.name ?? "Unknown device"}`);
 
-    const manualMac = this.normalizeMac(options?.preferredMac ?? null);
+    const manualMac = normalizeMac(options?.preferredMac ?? null);
     if (manualMac) {
       this.macAddress = manualMac;
+      rememberMac(manualMac);
       this.debug("info", `Using manually provided MAC: ${manualMac}`);
     } else {
       this.macAddress = await this.tryReadMacAddress(device);
@@ -236,36 +230,20 @@ export class GanCubeDriver implements SmartCubeDriver {
   }
 
   private async tryReadMacAddress(device: BluetoothDevice) {
-    if (!device.watchAdvertisements) {
-      return null;
-    }
-
-    return new Promise<string | null>((resolve) => {
-      const timeoutId = window.setTimeout(() => {
-        cleanup();
-        resolve(null);
-      }, 8000);
-
-      const onAdvertisement = (event: BluetoothAdvertisingEvent) => {
-        const manufacturerData = event.manufacturerData;
-        for (const [, dataView] of manufacturerData) {
-          const mac = this.extractMacAddress(dataView);
-          if (mac) {
-            cleanup();
-            resolve(mac);
-            return;
-          }
+    const mac = await readAdvertisementValue(device, (event) => {
+      for (const [, dataView] of event.manufacturerData) {
+        const candidate = this.extractMacAddress(dataView);
+        if (candidate) {
+          return candidate;
         }
-      };
-
-      const cleanup = () => {
-        window.clearTimeout(timeoutId);
-        device.removeEventListener("advertisementreceived", onAdvertisement as EventListener);
-      };
-
-      device.addEventListener("advertisementreceived", onAdvertisement as EventListener);
-      void device.watchAdvertisements?.();
+      }
+      return null;
     });
+
+    if (mac) {
+      rememberMac(mac);
+    }
+    return mac;
   }
 
   private extractMacAddress(dataView: DataView) {
@@ -280,28 +258,7 @@ export class GanCubeDriver implements SmartCubeDriver {
   }
 
   private promptForMacAddress() {
-    const remembered = window.localStorage.getItem("rubikey.gan.mac") ?? "";
-    const value = window.prompt(
-      "GAN MAC address was not detected automatically. Enter the cube MAC address to enable packet decryption.",
-      remembered || "AA:BB:CC:DD:EE:FF"
-    );
-
-    return this.normalizeMac(value);
-  }
-
-  private normalizeMac(value: string | null) {
-    if (!value) {
-      return null;
-    }
-
-    const normalized = value.trim().toUpperCase().replace(/-/g, ":");
-    if (!MAC_ADDRESS_PATTERN.test(normalized)) {
-      this.debug("error", `Invalid MAC address: ${value}`);
-      return null;
-    }
-
-    window.localStorage.setItem("rubikey.gan.mac", normalized);
-    return normalized;
+    return promptForMacAddress("GAN");
   }
 
   private debug(kind: GanDebugEntry["kind"], message: string, hex?: string, protocol?: GanProtocolVersion) {
@@ -314,3 +271,10 @@ export class GanCubeDriver implements SmartCubeDriver {
     });
   }
 }
+
+export const GAN_CUBE_MODEL: CubeModelRegistration = {
+  brand: "gan",
+  prefixes: GAN_NAME_PREFIXES,
+  optionalServices: GAN_OPTIONAL_SERVICES,
+  createDriver: () => new GanCubeDriver()
+};

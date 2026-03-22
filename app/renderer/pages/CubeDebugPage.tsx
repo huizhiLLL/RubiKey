@@ -20,8 +20,8 @@ import type { RuntimeState } from "@shared/runtime";
 import { ALL_MOVES, type CubeMoveEvent, type MoveToken } from "@shared/move";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Activity, BookOpenText, Compass, House, Info, Palette, PanelLeftClose, PanelLeftOpen, Plus, Save, Sparkles, Trash2 } from "lucide-react";
-import { GanCubeDriver } from "../../cube/gan/driver";
-import type { GanDebugEntry } from "../../cube/gan/protocol";
+import { createSmartCubeConnector, type CubeDebugEntry } from "../../cube";
+import { getRememberedMac, saveMacInputValue } from "../../cube/core/mac";
 
 type ConnectionStatus = "disconnected" | "connecting" | "connected" | "error";
 type ViewKey = "home" | "profiles" | "moves" | "actions" | "diagnostics" | "about";
@@ -76,7 +76,7 @@ function getDiagnosticsSummary(status: ConnectionStatus, errorText: string, debu
     return {
       tone: "healthy" as const,
       title: "连接状态正常",
-      detail: "GAN 设备已连接，当前可以接收转动并触发激活方案。",
+      detail: "智能魔方设备已连接，当前可以接收转动并触发激活方案。",
       action: "如果动作没有按预期执行，先检查当前方案是否已经绑定对应转动。"
     };
   }
@@ -103,7 +103,7 @@ function getDiagnosticsSummary(status: ConnectionStatus, errorText: string, debu
     tone: debugCount > 0 ? "pending" as const : "idle" as const,
     title: "设备尚未连接",
     detail: "当前没有活跃的 GAN 连接。",
-    action: "点击“连接 GAN”开始连接；如果设备曾经连接过，可以结合下方日志回看最近一次连接过程。"
+    action: "点击“连接智能魔方”开始连接；如果设备曾经连接过，可以结合下方日志回看最近一次连接过程。"
   };
 }
 
@@ -126,7 +126,7 @@ function getRubikeyApi() {
 }
 
 export function CubeDebugPage() {
-  const driverRef = useRef<GanCubeDriver | null>(null);
+  const driverRef = useRef<ReturnType<typeof createSmartCubeConnector> | null>(null);
   const mappingEnabledRef = useRef(false);
   const hasLoadedProfilesRef = useRef(false);
   const saveTimerRef = useRef<number | null>(null);
@@ -137,16 +137,17 @@ export function CubeDebugPage() {
     return savedTheme === "blossom" ? "blossom" : "mist";
   });
   const [status, setStatus] = useState<ConnectionStatus>("disconnected");
+  const [brand, setBrand] = useState<string>("unknown");
   const [deviceName, setDeviceName] = useState<string>("未连接");
   const [protocol, setProtocol] = useState<string>("unknown");
-  const [manualMac, setManualMac] = useState<string>(() => window.localStorage.getItem("rubikey.gan.mac") ?? "");
+  const [manualMac, setManualMac] = useState<string>(() => getRememberedMac());
   const [resolvedMac, setResolvedMac] = useState<string>("-");
   const [errorText, setErrorText] = useState<string>("");
   const [profileConfig, setProfileConfig] = useState<ProfileConfig>(createDefaultProfileConfig());
   const [runtimeState, setRuntimeState] = useState<RuntimeState | null>(null);
   const [saveState, setSaveState] = useState<string>("正在读取配置");
   const [moveLogs, setMoveLogs] = useState<CubeMoveEvent[]>([]);
-  const [debugLogs, setDebugLogs] = useState<GanDebugEntry[]>([]);
+  const [debugLogs, setDebugLogs] = useState<CubeDebugEntry[]>([]);
   const [executionHints, setExecutionHints] = useState<string[]>([]);
   const [pendingMove, setPendingMove] = useState<MoveToken | "">("");
 
@@ -225,7 +226,7 @@ export function CubeDebugPage() {
   }, [profileConfig, saveState]);
 
   useEffect(() => {
-    const driver = new GanCubeDriver();
+    const driver = createSmartCubeConnector();
     driver.setMoveListener((event) => {
       setMoveLogs((prev) => [event, ...prev].slice(0, 24));
       if (mappingEnabledRef.current) {
@@ -241,9 +242,11 @@ export function CubeDebugPage() {
     });
     driver.setDebugListener((entry) => {
       setDebugLogs((prev) => [entry, ...prev].slice(0, 36));
-      setProtocol(driver.getProtocol());
-      setDeviceName(driver.getDeviceName() ?? "未连接");
-      setResolvedMac(driver.getMacAddress() ?? "-");
+      const deviceInfo = driver.getDeviceInfo();
+      setBrand(deviceInfo.brand);
+      setProtocol(deviceInfo.protocol);
+      setDeviceName(deviceInfo.deviceName ?? "未连接");
+      setResolvedMac(deviceInfo.macAddress ?? "-");
     });
     driverRef.current = driver;
 
@@ -260,14 +263,16 @@ export function CubeDebugPage() {
     setStatus("connecting");
     try {
       await driver.connect({ preferredMac: manualMac || null });
-      setProtocol(driver.getProtocol());
-      setDeviceName(driver.getDeviceName() ?? "未知 GAN 设备");
-      setResolvedMac(driver.getMacAddress() ?? "-");
+      const deviceInfo = driver.getDeviceInfo();
+      setBrand(deviceInfo.brand);
+      setProtocol(deviceInfo.protocol);
+      setDeviceName(deviceInfo.deviceName ?? "未知设备");
+      setResolvedMac(deviceInfo.macAddress ?? "-");
       setStatus("connected");
     } catch (error) {
       console.error(error);
       setStatus("error");
-      setErrorText(error instanceof Error ? error.message : "连接 GAN 设备失败");
+      setErrorText(error instanceof Error ? error.message : "连接智能魔方设备失败");
     }
   }
 
@@ -276,6 +281,7 @@ export function CubeDebugPage() {
     if (!driver) return;
     await driver.disconnect();
     setStatus("disconnected");
+    setBrand("unknown");
     setProtocol("unknown");
     setDeviceName("未连接");
     setResolvedMac("-");
@@ -283,7 +289,7 @@ export function CubeDebugPage() {
 
   function handleMacChange(value: string) {
     setManualMac(value);
-    window.localStorage.setItem("rubikey.gan.mac", value.trim().toUpperCase());
+    saveMacInputValue(value);
   }
 
   function patchConfig(mutator: (draft: ProfileConfig) => void) {
@@ -453,7 +459,7 @@ export function CubeDebugPage() {
           </div>
           <div className="mac-input-card">
             <label className="field-block" htmlFor="gan-manual-mac">
-              <span className="mac-input-label">建议手动输入MAC地址以防自动获取设备MAC地址失败/错误</span>
+                <span className="mac-input-label">建议手动输入设备 MAC 地址，以便在自动获取失败或异常时优先使用</span>
               <input
                 id="gan-manual-mac"
                 value={manualMac}
@@ -465,7 +471,7 @@ export function CubeDebugPage() {
             </label>
           </div>
           <div className="button-row wrap">
-            <button onClick={handleConnect} disabled={status === "connecting" || !canUseBluetooth}>{status === "connecting" ? "连接中..." : "连接 GAN"}</button>
+            <button onClick={handleConnect} disabled={status === "connecting" || !canUseBluetooth}>{status === "connecting" ? "连接中..." : "连接智能魔方"}</button>
             <button className="ghost" onClick={handleDisconnect} disabled={status !== "connected"}>断开连接</button>
             <button className="ghost" onClick={toggleRuntimeEnabled}>{runtimeState?.enabled ? "暂停系统" : "启动映射"}</button>
             <button className="danger" onClick={triggerEmergencyStop}>紧急停止</button>
@@ -482,6 +488,7 @@ export function CubeDebugPage() {
           <div className="profile-preview-meta">
             <div className="mini-key-value"><span>当前激活方案</span><strong>{activeProfile?.name ?? "未选择"}</strong></div>
             <div className="mini-key-value"><span>已绑定转动</span><strong>{boundMoves.length} 项</strong></div>
+            <div className="mini-key-value"><span>当前品牌</span><strong>{brand}</strong></div>
           </div>
           <div className="profile-preview-list">
             {boundMoves.length === 0 ? (
@@ -695,7 +702,7 @@ export function CubeDebugPage() {
             <div className="log-list diagnostic-list">
               {debugLogs.length === 0 ? <p className="empty-state">暂无诊断日志</p> : debugLogs.map((log, index) => (
                 <div className="debug-row" key={`${log.timestamp}-${index}`}>
-                  <div className="debug-meta"><span>{formatTime(log.timestamp)}</span><strong>{log.kind}</strong><span>{log.protocol ?? "-"}</span></div>
+                  <div className="debug-meta"><span>{formatTime(log.timestamp)}</span><strong>{log.kind}</strong><span>{log.brand ?? "-"}</span><span>{log.protocol ?? "-"}</span></div>
                   <div className="debug-message">{log.message}</div>
                 </div>
               ))}
@@ -717,7 +724,7 @@ export function CubeDebugPage() {
           </div>
           <p>
             RubiKey 是一个基于 Electron 构建的 Windows 桌面工具，
-            用 GAN 智能魔方触发系统级键鼠操作
+            用智能魔方触发系统级键鼠操作
           </p>
         </section>
 
@@ -735,7 +742,7 @@ export function CubeDebugPage() {
           </article>
           <article className="about-card">
             <span>说明</span>
-            <p>当前测试主要面向 Windows 11 和部分 GAN 智能魔方，如遇问题欢迎反馈 issue 或 PR。</p>
+            <p>当前测试主要面向 Windows 11、GAN 与 Moyu32 新协议设备，如遇问题欢迎反馈 issue 或 PR。</p>
           </article>
         </section>
       </section>
