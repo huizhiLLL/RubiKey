@@ -25,7 +25,7 @@ import {
 import type { RuntimeState } from "@shared/runtime";
 import { ALL_MOVES, type CubeMoveEvent, type MoveToken } from "@shared/move";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Activity, BookOpenText, Compass, House, Info, Palette, PanelLeftClose, PanelLeftOpen, Plus, Save, Sparkles, Trash2 } from "lucide-react";
+import { Activity, BookOpenText, Compass, House, Info, Palette, PanelLeftClose, PanelLeftOpen, Plus, Save, Sparkles, Trash2, Bluetooth, Play, Square, AlertOctagon, RefreshCw, MousePointer2, Settings2, Inbox, Ghost } from "lucide-react";
 import { createSmartCubeConnector, type CubeDebugEntry } from "../../cube";
 import { getRememberedMac, saveMacInputValue } from "../../cube/core/mac";
 
@@ -33,8 +33,8 @@ type ConnectionStatus = "disconnected" | "connecting" | "connected" | "error";
 type ViewKey = "home" | "profiles" | "moves" | "actions" | "diagnostics" | "about";
 type ThemeKey = "blossom" | "mist";
 
-const NAV_ITEMS: Array<{ key: ViewKey; label: string; hint: string; icon: ReactNode }> = [
-  { key: "home", label: "首页", hint: "", icon: <House size={18} strokeWidth={1.9} /> },
+const NAV_ITEMS: Array<{ key: ViewKey; label: string; hint: string; icon: ReactNode }> =[
+  { key: "home", label: "仪表盘", hint: "", icon: <House size={18} strokeWidth={1.9} /> },
   { key: "profiles", label: "方案映射", hint: "", icon: <BookOpenText size={18} strokeWidth={1.9} /> },
   { key: "moves", label: "最近转动", hint: "", icon: <Compass size={18} strokeWidth={1.9} /> },
   { key: "actions", label: "执行回响", hint: "", icon: <Sparkles size={18} strokeWidth={1.9} /> },
@@ -73,8 +73,20 @@ function describeActionSummary(action: MacroActionConfig | null) {
       : "鼠标右键";
 
   return action.behavior === "tap"
-    ? `${subject}，单击一次`
-    : `${subject}，按住 ${action.durationMs}ms`;
+    ? `${subject} 单击`
+    : `${subject} 按住 ${action.durationMs}ms`;
+}
+
+function formatRuleShort(move: string, action: MacroActionConfig | null) {
+  if (!action) return `${move}->未绑定`;
+  const isKb = action.kind === "keyboard";
+  const targetStr = isKb ? `“${String(action.target).toUpperCase()}”` : (action.target === "left" ? "左键" : "右键");
+  
+  if (action.behavior === "tap") {
+     return `${move}->${isKb ? `单击${targetStr}` : `${targetStr}单击`}`;
+  } else {
+     return `${move}->${isKb ? `长按${targetStr}` : `${targetStr}长按`} ${action.durationMs}ms`;
+  }
 }
 
 function getDiagnosticsSummary(status: ConnectionStatus, errorText: string, debugCount: number) {
@@ -109,7 +121,7 @@ function getDiagnosticsSummary(status: ConnectionStatus, errorText: string, debu
     tone: debugCount > 0 ? "pending" as const : "idle" as const,
     title: "设备尚未连接",
     detail: "当前没有活跃的智能魔方连接。",
-    action: "点击“连接智能魔方”开始连接；如果设备曾经连接过，可以结合下方日志回看最近一次连接过程。"
+    action: "点击“连接设备”开始连接；如果设备曾经连接过，可以结合下方日志回看最近一次连接过程。"
   };
 }
 
@@ -146,7 +158,7 @@ export function CubeDebugPage() {
   const gyroConfigRef = useRef(createDefaultProfileConfig().gyroMouse);
   const gyroBasisRef = useRef<ReturnType<typeof createGyroBasis> | null>(null);
   const gyroPreviewRef = useRef(createIdleGyroPreviewState());
-  const [activeView, setActiveView] = useState<ViewKey>("home");
+  const[activeView, setActiveView] = useState<ViewKey>("home");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.localStorage.getItem("rubikey.sidebar.collapsed") === "1");
   const [theme, setTheme] = useState<ThemeKey>(() => {
     const savedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
@@ -154,31 +166,29 @@ export function CubeDebugPage() {
   });
   const [status, setStatus] = useState<ConnectionStatus>("disconnected");
   const [brand, setBrand] = useState<string>("unknown");
-  const [deviceName, setDeviceName] = useState<string>("未连接");
+  const[deviceName, setDeviceName] = useState<string>("等待连接...");
   const [protocol, setProtocol] = useState<string>("unknown");
   const [manualMac, setManualMac] = useState<string>(() => getRememberedMac());
   const [resolvedMac, setResolvedMac] = useState<string>("-");
   const [gyroSupported, setGyroSupported] = useState(false);
-  const [gyroDeviceEnabled, setGyroDeviceEnabled] = useState(false);
+  const[gyroDeviceEnabled, setGyroDeviceEnabled] = useState(false);
   const [gyroPreview, setGyroPreview] = useState(createIdleGyroPreviewState());
   const [errorText, setErrorText] = useState<string>("");
-  const [profileConfig, setProfileConfig] = useState<ProfileConfig>(createDefaultProfileConfig());
-  const [runtimeState, setRuntimeState] = useState<RuntimeState | null>(null);
-  const [saveState, setSaveState] = useState<string>("正在读取配置");
+  const[profileConfig, setProfileConfig] = useState<ProfileConfig>(createDefaultProfileConfig());
+  const[runtimeState, setRuntimeState] = useState<RuntimeState | null>(null);
+  const[saveState, setSaveState] = useState<string>("正在读取配置");
   const [moveLogs, setMoveLogs] = useState<CubeMoveEvent[]>([]);
   const [debugLogs, setDebugLogs] = useState<CubeDebugEntry[]>([]);
   const [executionHints, setExecutionHints] = useState<string[]>([]);
-  const [pendingMove, setPendingMove] = useState<MoveToken | "">("");
+  const[pendingMove, setPendingMove] = useState<MoveToken | "">("");
 
   const canUseBluetooth = useMemo(
-    () => typeof navigator !== "undefined" && "bluetooth" in navigator,
-    []
+    () => typeof navigator !== "undefined" && "bluetooth" in navigator,[]
   );
-  const appVersion = useMemo(() => window.rubikey?.version ?? "unknown", []);
+  const appVersion = useMemo(() => window.rubikey?.version ?? "unknown",[]);
 
   const activeProfile = useMemo(
-    () => profileConfig.profiles.find((profile) => profile.id === profileConfig.activeProfileId) ?? profileConfig.profiles[0] ?? null,
-    [profileConfig]
+    () => profileConfig.profiles.find((profile) => profile.id === profileConfig.activeProfileId) ?? profileConfig.profiles[0] ?? null,[profileConfig]
   );
 
   const boundMoves = useMemo(() => (activeProfile ? getBoundMoves(activeProfile) : []), [activeProfile]);
@@ -209,23 +219,23 @@ export function CubeDebugPage() {
     if (pendingMove && !availableMoves.includes(pendingMove)) {
       setPendingMove(availableMoves[0] ?? "");
     }
-  }, [availableMoves, pendingMove]);
+  },[availableMoves, pendingMove]);
 
   useEffect(() => {
     void (async () => {
-      const [loadedProfiles, loadedRuntime] = await Promise.all([
+      const[loadedProfiles, loadedRuntime] = await Promise.all([
         getRubikeyApi().loadProfileConfig(),
         getRubikeyApi().getRuntimeState()
       ]);
       setProfileConfig(loadedProfiles);
       setRuntimeState(loadedRuntime);
-      setSaveState(`已加载 ${formatTime(loadedProfiles.updatedAt)}`);
+      setSaveState(`配置已同步`);
       hasLoadedProfilesRef.current = true;
     })().catch((error) => {
       console.error(error);
       setSaveState(error instanceof Error ? error.message : "读取配置失败");
     });
-  }, []);
+  },[]);
 
   useEffect(() => {
     if (!hasLoadedProfilesRef.current || saveState !== "待保存") {
@@ -255,7 +265,7 @@ export function CubeDebugPage() {
       if (mappingEnabledRef.current) {
         void getRubikeyApi().executeActionForMove(event.move).then((result) => {
           if (result) {
-            setExecutionHints((prev) => [
+            setExecutionHints((prev) =>[
               `${formatTime(result.timestamp)} · ${event.move} -> ${result.detail}`,
               ...prev
             ].slice(0, 18));
@@ -291,7 +301,7 @@ export function CubeDebugPage() {
       const deviceInfo = driver.getDeviceInfo();
       setBrand(deviceInfo.brand);
       setProtocol(deviceInfo.protocol);
-      setDeviceName(deviceInfo.deviceName ?? "未连接");
+      setDeviceName(deviceInfo.deviceName ?? "等待连接...");
       setResolvedMac(deviceInfo.macAddress ?? "-");
       setGyroSupported(deviceInfo.gyroSupported);
       setGyroDeviceEnabled(deviceInfo.gyroEnabled);
@@ -304,7 +314,7 @@ export function CubeDebugPage() {
       void driver.disconnect();
       driverRef.current = null;
     };
-  }, []);
+  },[]);
 
   useEffect(() => {
     const driver = driverRef.current;
@@ -389,7 +399,7 @@ export function CubeDebugPage() {
 
   async function triggerEmergencyStop() {
     const result = await getRubikeyApi().emergencyStop();
-    setExecutionHints((prev) => [
+    setExecutionHints((prev) =>[
       `${formatTime(result.timestamp)} · 急停 -> ${result.detail}`,
       ...prev
     ].slice(0, 18));
@@ -413,7 +423,7 @@ export function CubeDebugPage() {
 
   function addProfile() {
     patchConfig((draft) => {
-      const profile = createBlankProfile(`方案 ${draft.profiles.length + 1}`);
+      const profile = createBlankProfile(`新方案 ${draft.profiles.length + 1}`);
       draft.profiles.push(profile);
       draft.activeProfileId = profile.id;
     });
@@ -538,162 +548,212 @@ export function CubeDebugPage() {
         }))
       });
       setProfileConfig(saved);
-      setSaveState(`已保存 ${formatTime(saved.updatedAt)}`);
+      setSaveState(`配置已同步`);
       const runtime = await getRubikeyApi().getRuntimeState();
       setRuntimeState(runtime);
     } catch (error) {
       console.error(error);
-      setSaveState(error instanceof Error ? `保存失败：${error.message}` : "保存失败");
+      setSaveState(error instanceof Error ? `同步失败：${error.message}` : "同步失败");
     }
   }
 
   function renderHome() {
     return (
-      <section className="workspace-grid">
-        <section className="hero-summary">
-          <div className="panel-head">
-            <div>
-              <h2>当前状态</h2>
+      <div className="workspace-container">
+        <div className="page-header">
+          <h2>仪表盘</h2>
+          <p>总览设备状态与快速控制</p>
+        </div>
+
+        <div className="dashboard-grid">
+          {/* Card 1: 设备连接 */}
+          <section className="dashboard-card">
+            <div className="card-header">
+              <div className="card-title">
+                <Bluetooth size={18} />
+                <h3>设备连接</h3>
+              </div>
+              <span className={`status-dot ${status}`} title={getStatusLabel(status)}></span>
             </div>
-          </div>
-          <div className="summary-grid">
-            <div className="summary-card"><span>设备</span><strong>{deviceName}</strong></div>
-            <div className="summary-card"><span>连接</span><strong>{getStatusLabel(status)}</strong></div>
-            <div className="summary-card"><span>当前激活方案</span><strong>{activeProfile?.name ?? "未选择"}</strong></div>
-            <div className="summary-card"><span>系统状态</span><strong>{runtimeState?.enabled ? "运行中" : "已暂停"}</strong></div>
-            <div className="summary-card"><span>陀螺仪支持</span><strong>{gyroSupported ? "支持" : "未检测到"}</strong></div>
-            <div className="summary-card"><span>陀螺仪鼠标</span><strong>{profileConfig.gyroMouse.enabled ? "已启用" : "已关闭"}</strong></div>
-          </div>
-          <div className="mac-input-card">
-            <label className="field-block" htmlFor="gan-manual-mac">
-                <span className="mac-input-label">建议手动输入设备 MAC 地址，以便在自动获取失败或异常时优先使用</span>
+            
+            <div className="device-info-main">
+              <span className="device-name">{deviceName}</span>
+              <span className="device-meta">{brand !== "unknown" ? brand : "未知品牌"} • {getStatusLabel(status)}</span>
+            </div>
+
+            <details className="mac-input-group">
+              <summary className="mac-label" style={{ cursor: "pointer", userSelect: "none" }}>
+                高级设置：手动指定 MAC 地址
+              </summary>
               <input
-                id="gan-manual-mac"
+                id="manual-mac"
+                className="input-field mt-sm"
                 value={manualMac}
                 onChange={(event) => handleMacChange(event.target.value)}
-                placeholder="AA:BB:CC:DD:EE:FF"
+                placeholder="例如: AA:BB:CC:DD:EE:FF"
                 autoComplete="off"
                 spellCheck={false}
               />
-            </label>
-          </div>
-          <div className="button-row wrap">
-            <button onClick={handleConnect} disabled={status === "connecting" || !canUseBluetooth}>{status === "connecting" ? "连接中..." : "连接智能魔方"}</button>
-            <button className="ghost" onClick={handleDisconnect} disabled={status !== "connected"}>断开连接</button>
-            <button className="ghost" onClick={toggleRuntimeEnabled}>{runtimeState?.enabled ? "暂停系统" : "启动映射"}</button>
-            <button className="danger" onClick={triggerEmergencyStop}>紧急停止</button>
-          </div>
+            </details>
 
-          <section className="panel-subsection add-binding-box">
-            <div className="panel-head compact-head">
-              <div>
-                <h3>陀螺仪鼠标</h3>
-              </div>
-              <button className="ghost" onClick={resetGyroNeutral} disabled={status !== "connected" || !profileConfig.gyroMouse.enabled}>
-                重置中立姿态
+            <div className="button-group wrap">
+              <button 
+                className="btn-primary" 
+                onClick={handleConnect} 
+                disabled={status === "connecting" || status === "connected" || !canUseBluetooth}
+              >
+                {status === "connecting" ? "正在连接..." : "连接设备"}
+              </button>
+              <button 
+                className="btn-ghost" 
+                onClick={handleDisconnect} 
+                disabled={status !== "connected"}
+              >
+                断开连接
               </button>
             </div>
-            <div className="rule-editor-grid">
-              <label className="rule-control">
-                <span>启用功能</span>
-                <input
-                  type="checkbox"
-                  checked={profileConfig.gyroMouse.enabled}
-                  onChange={(event) => updateGyroBoolean("enabled", event.target.checked)}
-                />
-              </label>
-              <label className="rule-control">
-                <span>上下阈值</span>
-                <input type="number" min={4} max={75} value={profileConfig.gyroMouse.deadzonePitchDeg} onChange={(event) => updateGyroNumber("deadzonePitchDeg", event.target.value)} />
-              </label>
-              <label className="rule-control">
-                <span>左右阈值</span>
-                <input type="number" min={4} max={75} value={profileConfig.gyroMouse.deadzoneRollDeg} onChange={(event) => updateGyroNumber("deadzoneRollDeg", event.target.value)} />
-              </label>
-              <label className="rule-control">
-                <span>上下高速阈值</span>
-                <input type="number" min={6} max={89} value={profileConfig.gyroMouse.fastPitchDeg} onChange={(event) => updateGyroNumber("fastPitchDeg", event.target.value)} />
-              </label>
-              <label className="rule-control">
-                <span>左右高速阈值</span>
-                <input type="number" min={6} max={89} value={profileConfig.gyroMouse.fastRollDeg} onChange={(event) => updateGyroNumber("fastRollDeg", event.target.value)} />
-              </label>
-              <label className="rule-control">
-                <span>低速步长</span>
-                <input type="number" min={1} max={80} value={profileConfig.gyroMouse.slowStepPx} onChange={(event) => updateGyroNumber("slowStepPx", event.target.value)} />
-              </label>
-              <label className="rule-control">
-                <span>高速步长</span>
-                <input type="number" min={1} max={120} value={profileConfig.gyroMouse.fastStepPx} onChange={(event) => updateGyroNumber("fastStepPx", event.target.value)} />
-              </label>
-              <label className="rule-control">
-                <span>刷新间隔 ms</span>
-                <input type="number" min={10} max={80} value={profileConfig.gyroMouse.intervalMs} onChange={(event) => updateGyroNumber("intervalMs", event.target.value)} />
-              </label>
-              <label className="rule-control">
-                <span>交换上下左右轴</span>
-                <input type="checkbox" checked={profileConfig.gyroMouse.swapAxes} onChange={(event) => updateGyroBoolean("swapAxes", event.target.checked)} />
-              </label>
-              <label className="rule-control">
-                <span>反转左右</span>
-                <input type="checkbox" checked={profileConfig.gyroMouse.invertHorizontal} onChange={(event) => updateGyroBoolean("invertHorizontal", event.target.checked)} />
-              </label>
-              <label className="rule-control">
-                <span>反转上下</span>
-                <input type="checkbox" checked={profileConfig.gyroMouse.invertVertical} onChange={(event) => updateGyroBoolean("invertVertical", event.target.checked)} />
-              </label>
+            {errorText && <p className="error-text mt-sm">{errorText}</p>}
+          </section>
+
+          {/* Card 2: 方案与系统状态 */}
+          <section className="dashboard-card">
+            <div className="card-header">
+              <div className="card-title">
+                <Play size={18} />
+                <h3>映射控制</h3>
+              </div>
+              <span className={`status-badge ${runtimeState?.enabled ? 'active' : 'paused'}`}>
+                {runtimeState?.enabled ? "运行中" : "已暂停"}
+              </span>
             </div>
-            <div className="profile-preview-meta">
-              <div className="mini-key-value"><span>设备侧 Gyro</span><strong>{gyroDeviceEnabled ? "已开启" : "未开启"}</strong></div>
-              <div className="mini-key-value"><span>Pitch</span><strong>{gyroPreview.pitchDeg.toFixed(1)}°</strong></div>
-              <div className="mini-key-value"><span>Roll</span><strong>{gyroPreview.rollDeg.toFixed(1)}°</strong></div>
-              <div className="mini-key-value"><span>方向</span><strong>{gyroPreview.horizontalDirection}/{gyroPreview.verticalDirection}</strong></div>
+
+            <div className="profile-info-main">
+              <span className="info-label">当前激活方案</span>
+              <span className="info-value">{activeProfile?.name ?? "未选择"}</span>
+              <span className="info-sub">{boundMoves.length} 项规则已绑定</span>
+            </div>
+
+            {boundMoves.length > 0 && (
+              <div className="profile-rules-summary">
+                {boundMoves.map((move) => (
+                  <span key={move} className="rule-summary-badge">
+                    {formatRuleShort(move, activeProfile!.rules[move])}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            <div className="button-group wrap mt-auto">
+              <button 
+                className={`btn-ghost ${runtimeState?.enabled ? '' : 'highlight'}`} 
+                onClick={toggleRuntimeEnabled}
+              >
+                {runtimeState?.enabled ? <><Square size={16}/> 暂停映射</> : <><Play size={16}/> 启动映射</>}
+              </button>
+              <button className="btn-danger" onClick={triggerEmergencyStop}>
+                <AlertOctagon size={16}/> 急停
+              </button>
             </div>
           </section>
-        </section>
+        </div>
 
-        <article className="home-profile-preview">
-          <div className="panel-head">
-            <div>
-              <h2>方案映射预览</h2>
+        {/* Card 3: 陀螺仪高级设置 */}
+        <section className="dashboard-card mt-md">
+          <div className="card-header">
+            <div className="card-title">
+              <MousePointer2 size={18} />
+              <h3>陀螺仪鼠标</h3>
             </div>
-            <button className="ghost" onClick={() => setActiveView("profiles")}>前往编辑</button>
+            <div className="header-actions">
+              <button className="btn-icon" onClick={resetGyroNeutral} disabled={status !== "connected" || !profileConfig.gyroMouse.enabled} title="重置中立姿态">
+                <RefreshCw size={16} />
+              </button>
+              <label className="toggle-switch">
+                <input 
+                  type="checkbox" 
+                  checked={profileConfig.gyroMouse.enabled} 
+                  onChange={(event) => updateGyroBoolean("enabled", event.target.checked)} 
+                />
+                <span className="slider"></span>
+              </label>
+            </div>
           </div>
-            <div className="profile-preview-meta">
-            <div className="mini-key-value"><span>当前激活方案</span><strong>{activeProfile?.name ?? "未选择"}</strong></div>
-            <div className="mini-key-value"><span>已绑定转动</span><strong>{boundMoves.length} 项</strong></div>
-            <div className="mini-key-value"><span>当前品牌</span><strong>{brand}</strong></div>
-          </div>
-          <div className="profile-preview-list">
-            {boundMoves.length === 0 ? (
-              <p className="empty-state">当前方案还没有映射规则，前往“方案映射”页添加。</p>
-            ) : boundMoves.slice(0, 6).map((move) => (
-              <div className="profile-preview-rule" key={move}>
-                <strong>{move} {"->"} {describeActionSummary(activeProfile?.rules[move] ?? null)}</strong>
+
+          {profileConfig.gyroMouse.enabled && (
+            <div className="gyro-settings-container">
+              <div className="gyro-preview-bar">
+                <div className="preview-item"><span>支持状态:</span> <strong>{gyroSupported ? "支持" : "未检测到"}</strong></div>
+                <div className="preview-item"><span>设备 Gyro:</span> <strong>{gyroDeviceEnabled ? "开启" : "关闭"}</strong></div>
+                <div className="preview-item"><span>Pitch (上下):</span> <strong>{gyroPreview.pitchDeg.toFixed(1)}°</strong></div>
+                <div className="preview-item"><span>Roll (左右):</span> <strong>{gyroPreview.rollDeg.toFixed(1)}°</strong></div>
               </div>
-            ))}
-          </div>
-        </article>
-      </section>
+
+              <div className="settings-grid">
+                <div className="setting-group">
+                  <h4>死区阈值 (°)</h4>
+                  <div className="input-row">
+                    <label>上下<input type="number" min={4} max={75} value={profileConfig.gyroMouse.deadzonePitchDeg} onChange={(e) => updateGyroNumber("deadzonePitchDeg", e.target.value)} /></label>
+                    <label>左右<input type="number" min={4} max={75} value={profileConfig.gyroMouse.deadzoneRollDeg} onChange={(e) => updateGyroNumber("deadzoneRollDeg", e.target.value)} /></label>
+                  </div>
+                </div>
+
+                <div className="setting-group">
+                  <h4>高速阈值 (°)</h4>
+                  <div className="input-row">
+                    <label>上下<input type="number" min={6} max={89} value={profileConfig.gyroMouse.fastPitchDeg} onChange={(e) => updateGyroNumber("fastPitchDeg", e.target.value)} /></label>
+                    <label>左右<input type="number" min={6} max={89} value={profileConfig.gyroMouse.fastRollDeg} onChange={(e) => updateGyroNumber("fastRollDeg", e.target.value)} /></label>
+                  </div>
+                </div>
+
+                <div className="setting-group">
+                  <h4>鼠标步长 (px)</h4>
+                  <div className="input-row">
+                    <label>低速<input type="number" min={1} max={80} value={profileConfig.gyroMouse.slowStepPx} onChange={(e) => updateGyroNumber("slowStepPx", e.target.value)} /></label>
+                    <label>高速<input type="number" min={1} max={120} value={profileConfig.gyroMouse.fastStepPx} onChange={(e) => updateGyroNumber("fastStepPx", e.target.value)} /></label>
+                  </div>
+                </div>
+                
+                <div className="setting-group">
+                  <h4>其他与反转</h4>
+                  <div className="toggle-list">
+                     <label className="toggle-row">
+                        <span>刷新率 (ms)</span>
+                        <input className="small-input" type="number" min={10} max={80} value={profileConfig.gyroMouse.intervalMs} onChange={(e) => updateGyroNumber("intervalMs", e.target.value)} />
+                     </label>
+                     <label className="toggle-row">
+                        <span>交换上下左右</span>
+                        <div className="toggle-switch small"><input type="checkbox" checked={profileConfig.gyroMouse.swapAxes} onChange={(e) => updateGyroBoolean("swapAxes", e.target.checked)} /><span className="slider"></span></div>
+                     </label>
+                     <label className="toggle-row">
+                        <span>反转水平方向</span>
+                        <div className="toggle-switch small"><input type="checkbox" checked={profileConfig.gyroMouse.invertHorizontal} onChange={(e) => updateGyroBoolean("invertHorizontal", e.target.checked)} /><span className="slider"></span></div>
+                     </label>
+                     <label className="toggle-row">
+                        <span>反转垂直方向</span>
+                        <div className="toggle-switch small"><input type="checkbox" checked={profileConfig.gyroMouse.invertVertical} onChange={(e) => updateGyroBoolean("invertVertical", e.target.checked)} /><span className="slider"></span></div>
+                     </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </section>
+      </div>
     );
   }
 
   function renderProfiles() {
     return (
-      <section className="rules-panel">
-        <div className="panel-head">
+      <div className="workspace-container full-height">
+        <div className="page-header">
           <div>
             <h2>方案与映射</h2>
+            <p>管理不同场景的魔方转动到键鼠的映射规则</p>
           </div>
-          <div className="panel-head-actions">
-            <span>{saveState}</span>
-            <button
-              className="ghost icon-button"
-              title="保存全部方案"
-              aria-label="保存全部方案"
-              onClick={saveProfiles}
-            >
-              <Save size={16} strokeWidth={1.9} />
+          <div className="header-actions">
+            <span className="save-status">{saveState}</span>
+            <button className="btn-primary icon-only" title="强制保存" onClick={saveProfiles}>
+              <Save size={16} />
             </button>
           </div>
         </div>
@@ -702,147 +762,155 @@ export function CubeDebugPage() {
           {profileConfig.profiles.map((profile) => (
             <button
               key={profile.id}
-              className={profile.id === profileConfig.activeProfileId ? "profile-chip active" : "profile-chip"}
+              className={`profile-tab ${profile.id === profileConfig.activeProfileId ? "active" : ""}`}
               onClick={() => selectProfile(profile.id)}
             >
               {profile.name}
             </button>
           ))}
-          <button
-            className="ghost profile-chip icon-button"
-            title="新建方案"
-            aria-label="新建方案"
-            onClick={addProfile}
-          >
-            <Plus size={16} strokeWidth={1.9} />
+          <button className="profile-tab add-btn" title="新建方案" onClick={addProfile}>
+            <Plus size={16} />
           </button>
         </div>
 
         {activeProfile ? (
-          <div className="profile-editor">
-            <label className="field-block">
-              <span>方案名称</span>
-              <input value={activeProfile.name} onChange={(event) => updateProfileMeta(event.target.value)} />
-            </label>
-            <div className="button-row wrap">
-              <button
-                className="ghost icon-button"
-                title="删除当前方案"
-                aria-label="删除当前方案"
-                onClick={removeCurrentProfile}
+          <div className="profile-editor-area">
+            <div className="profile-toolbar">
+              <div className="input-group-inline">
+                <label>方案名称</label>
+                <input 
+                  className="input-field max-w-sm" 
+                  value={activeProfile.name} 
+                  onChange={(event) => updateProfileMeta(event.target.value)} 
+                />
+              </div>
+              <button 
+                className="btn-danger icon-only" 
+                title="删除当前方案" 
+                onClick={removeCurrentProfile} 
                 disabled={profileConfig.profiles.length <= 1}
               >
-                <Trash2 size={16} strokeWidth={1.9} />
+                <Trash2 size={16} />
               </button>
             </div>
 
-            <section className="panel-subsection add-binding-box">
-              <div className="panel-head compact-head">
-                <div>
-                  <h3>新增映射</h3>
-                </div>
-              </div>
-              <div className="add-binding-row">
-                <select value={pendingMove} onChange={(event) => setPendingMove(event.target.value as MoveToken | "")}>
-                  {availableMoves.length === 0 ? <option value="">没有可添加的转动</option> : availableMoves.map((move) => (
-                    <option key={move} value={move}>{move}</option>
-                  ))}
-                </select>
-                <button onClick={addBinding} disabled={!pendingMove}>添加映射</button>
-              </div>
-            </section>
+            <div className="add-rule-bar">
+              <span className="add-label">新增映射：</span>
+              <select className="select-field" value={pendingMove} onChange={(event) => setPendingMove(event.target.value as MoveToken | "")}>
+                {availableMoves.length === 0 ? <option value="">无剩余可用转动</option> : availableMoves.map((move) => (
+                  <option key={move} value={move}>{move} (如 U, R')</option>
+                ))}
+              </select>
+              <button className="btn-primary" onClick={addBinding} disabled={!pendingMove}>
+                <Plus size={16} /> 添加
+              </button>
+            </div>
 
-            <div className="rules-grid">
+            <div className="rules-list">
               {boundMoves.length === 0 ? (
-                <p className="empty-state">当前方案还没有绑定任何转动，先从上方添加。</p>
+                <div className="empty-state-box">
+                  <Ghost strokeWidth={1.5} />
+                  <span>当前方案没有任何规则，请从上方添加。</span>
+                </div>
               ) : boundMoves.map((move) => {
                 const action = activeProfile.rules[move];
                 const targetOptions = action?.kind === "mouse" ? MOUSE_OPTIONS : KEYBOARD_OPTIONS;
                 return (
-                  <div className="rule-row" key={move}>
-                    <div className="rule-head">
-                      <div className="rule-summary">
-                        <strong>{move} {"->"} {describeActionSummary(action)}</strong>
-                      </div>
-                      <button
-                        className="ghost rule-remove-button icon-button"
-                        title={`删除 ${move} 映射`}
-                        aria-label={`删除 ${move} 映射`}
-                        onClick={() => removeBinding(move)}
-                      >
-                        <Trash2 size={16} strokeWidth={1.9} />
-                      </button>
+                  <div className="rule-card" key={move}>
+                    <div className="rule-trigger">
+                      <div className="move-badge">{move}</div>
+                      <span className="arrow">➔</span>
                     </div>
-                    <div className="rule-editor-grid">
-                      <label className="rule-control">
-                        <span>动作类型</span>
-                        <select value={action?.kind ?? ""} onChange={(event) => updateRuleKind(move, event.target.value)}>
-                          <option value="keyboard">键盘</option>
-                          <option value="mouse">鼠标</option>
-                        </select>
-                      </label>
-                      <label className="rule-control">
-                        <span>目标</span>
-                        <select value={action?.target ?? ""} onChange={(event) => updateRuleTarget(move, event.target.value)} disabled={!action}>
-                          {action ? targetOptions.map((option) => (
-                            <option key={option.value} value={option.value}>{option.label}</option>
-                          )) : null}
-                        </select>
-                      </label>
-                      <label className="rule-control">
-                        <span>行为</span>
-                        <select value={action?.behavior ?? "tap"} onChange={(event) => updateRuleBehavior(move, event.target.value)} disabled={!action}>
-                          {ACTION_BEHAVIORS.map((behavior) => (
-                            <option key={behavior} value={behavior}>{behavior === "tap" ? "单击" : "按住"}</option>
-                          ))}
-                        </select>
-                      </label>
-                      <label className="rule-control">
-                        <span>持续时间</span>
+                    
+                    <div className="rule-config-row">
+                      <select className="select-field small" value={action?.kind ?? ""} onChange={(event) => updateRuleKind(move, event.target.value)}>
+                        <option value="keyboard">键盘</option>
+                        <option value="mouse">鼠标</option>
+                      </select>
+                      
+                      <select className="select-field small" value={action?.target ?? ""} onChange={(event) => updateRuleTarget(move, event.target.value)} disabled={!action}>
+                        {action ? targetOptions.map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        )) : null}
+                      </select>
+                      
+                      <select className="select-field small" value={action?.behavior ?? "tap"} onChange={(event) => updateRuleBehavior(move, event.target.value)} disabled={!action}>
+                        {ACTION_BEHAVIORS.map((behavior) => (
+                          <option key={behavior} value={behavior}>{behavior === "tap" ? "单击 (Tap)" : "按住 (Hold)"}</option>
+                        ))}
+                      </select>
+                      
+                      <div className={`duration-wrapper ${(!action || action.behavior !== "hold") ? "disabled" : ""}`}>
                         <input
-                          type="number"
-                          min={10}
-                          step={10}
+                          className="input-field small duration-input"
+                          type="number" min={10} step={10}
                           value={action?.durationMs ?? 100}
                           onChange={(event) => updateRuleDuration(move, event.target.value)}
                           disabled={!action || action.behavior !== "hold"}
-                          placeholder="时长 ms"
                         />
-                      </label>
+                        <span className="unit">ms</span>
+                      </div>
                     </div>
+
+                    <button className="btn-ghost icon-only delete-btn" title="移除该映射" onClick={() => removeBinding(move)}>
+                      <Trash2 size={16} />
+                    </button>
                   </div>
                 );
               })}
             </div>
           </div>
         ) : null}
-      </section>
+      </div>
     );
   }
 
   function renderMoves() {
     return (
-      <section className="compact-panel">
-        <div className="panel-head"><div><h2>最近转动</h2></div><span>{moveLogs.length} 条</span></div>
-        <div className="log-list">
-          {moveLogs.length === 0 ? <p className="empty-state">等待魔方转动输入</p> : moveLogs.map((log, index) => (
-            <div className="log-row" key={`${log.move}-${log.localTimestamp}-${index}`}><span>{formatTime(log.localTimestamp)}</span><strong>{log.move}</strong></div>
+      <div className="workspace-container">
+         <div className="page-header">
+          <div>
+            <h2>最近转动</h2>
+            <p>魔方传回的原始转动数据，共记录 {moveLogs.length} 条</p>
+          </div>
+        </div>
+        <div className="log-panel">
+          {moveLogs.length === 0 ? (
+            <div className="empty-state-box">
+              <Compass strokeWidth={1.5} />
+              <span>等待魔方转动输入...</span>
+            </div>
+          ) : moveLogs.map((log, index) => (
+            <div className="log-item" key={`${log.move}-${log.localTimestamp}-${index}`}>
+              <span className="time">{formatTime(log.localTimestamp)}</span>
+              <span className="move">{log.move}</span>
+            </div>
           ))}
         </div>
-      </section>
+      </div>
     );
   }
 
   function renderActions() {
     return (
-      <section className="compact-panel">
-        <div className="panel-head"><div><h2>执行回响</h2></div><span>{executionHints.length} 条</span></div>
-        <div className="log-list">
-          {executionHints.length === 0 ? <p className="empty-state">动作执行后会显示在这里</p> : executionHints.map((line, index) => (
-            <div className="hint-row" key={`${line}-${index}`}>{line}</div>
+      <div className="workspace-container">
+        <div className="page-header">
+          <div>
+            <h2>执行回响</h2>
+            <p>应用实际触发的系统级操作日志</p>
+          </div>
+        </div>
+        <div className="log-panel highlight">
+          {executionHints.length === 0 ? (
+            <div className="empty-state-box">
+              <Sparkles strokeWidth={1.5} />
+              <span>暂无执行动作...</span>
+            </div>
+          ) : executionHints.map((line, index) => (
+            <div className="log-item" key={`${line}-${index}`}>{line}</div>
           ))}
         </div>
-      </section>
+      </div>
     );
   }
 
@@ -850,76 +918,74 @@ export function CubeDebugPage() {
     const summary = getDiagnosticsSummary(status, errorText, debugLogs.length);
 
     return (
-      <section className="compact-panel">
-        <div className="panel-head"><div><h2>连接诊断</h2></div><span>{debugLogs.length} 条</span></div>
-        <div className="diagnostic-layout">
-          <section className={`diagnostic-summary ${summary.tone}`}>
-            <div className="diagnostic-summary-head">
-              <span className="diagnostic-badge">
-                {summary.tone === "healthy" ? "正常" : summary.tone === "warning" ? "注意" : summary.tone === "pending" ? "进行中" : "未开始"}
-              </span>
-              <strong>{summary.title}</strong>
+      <div className="workspace-container">
+        <div className="page-header">
+          <h2>连接诊断</h2>
+        </div>
+        <div className="diagnostic-grid">
+          <section className={`diag-summary-card ${summary.tone}`}>
+            <div className="diag-header">
+              <span className="diag-badge">{summary.tone === "healthy" ? "正常" : summary.tone === "warning" ? "注意" : summary.tone === "pending" ? "进行中" : "未开始"}</span>
+              <h3>{summary.title}</h3>
             </div>
-            <p>{summary.detail}</p>
-            <div className="diagnostic-next">
-              <span>建议动作</span>
-              <strong>{summary.action}</strong>
+            <p className="diag-detail">{summary.detail}</p>
+            <div className="diag-action">
+              <span className="action-label">建议动作：</span>
+              <span>{summary.action}</span>
             </div>
           </section>
 
-          <section className="diagnostic-log-panel">
-            <div className="panel-head compact-head">
-              <div>
-                <h3>详细日志</h3>
-              </div>
-            </div>
-            <div className="log-list diagnostic-list">
-              {debugLogs.length === 0 ? <p className="empty-state">暂无诊断日志</p> : debugLogs.map((log, index) => (
-                <div className="debug-row" key={`${log.timestamp}-${index}`}>
-                  <div className="debug-meta"><span>{formatTime(log.timestamp)}</span><strong>{log.kind}</strong><span>{log.brand ?? "-"}</span><span>{log.protocol ?? "-"}</span></div>
-                  <div className="debug-message">{log.message}</div>
+          <section className="diag-log-panel">
+            <h3>详细设备通信日志</h3>
+            <div className="log-panel small">
+              {debugLogs.length === 0 ? (
+                <div className="empty-state-box">
+                  <Inbox strokeWidth={1.5} />
+                  <span>暂无通信日志</span>
+                </div>
+              ) : debugLogs.map((log, index) => (
+                <div className="log-item complex" key={`${log.timestamp}-${index}`}>
+                  <div className="meta">
+                    <span className="time">{formatTime(log.timestamp)}</span>
+                    <span className="tag">{log.kind}</span>
+                    <span className="brand">{log.brand ?? "-"}</span>
+                  </div>
+                  <div className="msg">{log.message}</div>
                 </div>
               ))}
             </div>
           </section>
         </div>
-      </section>
+      </div>
     );
   }
 
   function renderAbout() {
     return (
-      <section className="about-layout">
+      <div className="workspace-container about-page">
         <section className="about-hero">
-          <div className="panel-head">
-            <div>
-              <h2>关于 RubiKey</h2>
-            </div>
+          <div className="logo-placeholder">
+            <Sparkles size={48} />
           </div>
-          <p>
-            RubiKey 是一个基于 Electron 构建的 Windows 桌面工具，
-            用智能魔方触发系统级键鼠操作
-          </p>
+          <h2>RubiKey</h2>
+          <p>基于 Electron 构建的 Windows 桌面工具，<br/>让智能魔方成为你的系统级控制器。</p>
         </section>
 
-        <section className="about-grid">
-          <article className="about-card">
-            <span>版本号</span>
-            <strong>{appVersion}</strong>
-          </article>
-          <article className="about-card">
-            <span>Github 仓库</span>
-            <a href={REPOSITORY_URL} target="_blank" rel="noreferrer">
-              {REPOSITORY_URL}
-            </a>
-            <p>如果这个项目对你有帮助，欢迎到仓库点个 Star。</p>
-          </article>
-          <article className="about-card">
-            <span>说明</span>
-            <p>当前测试主要面向 Windows 11、GAN 与 Moyu32 新协议设备，如遇问题欢迎反馈 issue 或 PR。</p>
-          </article>
-        </section>
-      </section>
+        <div className="about-cards">
+          <div className="dashboard-card text-center">
+            <span className="info-label">版本号</span>
+            <span className="info-value">{appVersion}</span>
+          </div>
+          <div className="dashboard-card text-center">
+            <span className="info-label">开源仓库</span>
+            <a className="info-value link" href={REPOSITORY_URL} target="_blank" rel="noreferrer">GitHub 主页</a>
+          </div>
+          <div className="dashboard-card">
+            <span className="info-label">测试说明</span>
+            <p className="text-sm mt-sm text-secondary">当前版本主要面向 Windows 11 环境，兼容部分 GAN 与 Moyu 新协议设备。如遇问题欢迎提交 Issue 或 PR。</p>
+          </div>
+        </div>
+      </div>
     );
   }
 
@@ -934,62 +1000,54 @@ export function CubeDebugPage() {
     }
   }
 
-  function toggleTheme() {
-    setTheme((prev) => prev === "blossom" ? "mist" : "blossom");
-  }
-
   return (
-    <main className={sidebarCollapsed ? "app-shell collapsed" : "app-shell"}>
-      <div className="page-backdrop" />
-      <aside className={sidebarCollapsed ? "floating-sidebar collapsed" : "floating-sidebar"}>
-        <div className="sidebar-brand">
-          <div className="sidebar-head">
-            <button
-              className="ghost sidebar-toggle"
-              title={sidebarCollapsed ? "展开侧栏" : "收起侧栏"}
-              aria-label={sidebarCollapsed ? "展开侧栏" : "收起侧栏"}
-              onClick={() => setSidebarCollapsed((prev) => !prev)}
-            >
-              {sidebarCollapsed ? <PanelLeftOpen size={16} strokeWidth={1.9} /> : <PanelLeftClose size={16} strokeWidth={1.9} />}
-            </button>
-          </div>
-          {sidebarCollapsed ? null : <h1>RubiKey</h1>}
+    <main className={`app-layout ${sidebarCollapsed ? 'collapsed' : ''}`}>
+      <div className="bg-decorations">
+        <div className="blob top-left"></div>
+        <div className="blob bottom-right"></div>
+      </div>
+      
+      <aside className="sidebar">
+        <div className="sidebar-header">
+          {!sidebarCollapsed && <h1>RubiKey</h1>}
+          <button
+            className="btn-ghost icon-only collapse-btn"
+            title={sidebarCollapsed ? "展开" : "收起"}
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+          >
+            {sidebarCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+          </button>
         </div>
 
-        <nav className="sidebar-nav">
+        <nav className="nav-menu">
           {NAV_ITEMS.map((item) => (
             <button
               key={item.key}
               title={item.label}
-              className={item.key === activeView ? "nav-item active" : "nav-item"}
+              className={`nav-item ${item.key === activeView ? "active" : ""}`}
               onClick={() => setActiveView(item.key)}
             >
-              <span className="nav-glyph">{item.icon}</span>
-              {sidebarCollapsed ? null : <strong>{item.label}</strong>}
+              <span className="icon-wrapper">{item.icon}</span>
+              {!sidebarCollapsed && <span className="label">{item.label}</span>}
             </button>
           ))}
         </nav>
 
         <div className="sidebar-footer">
-          {sidebarCollapsed ? null : (
-            <div className="theme-meta">
-              <span>主题风格</span>
-              <strong>{theme === "mist" ? "淡蓝简洁" : "樱粉和风"}</strong>
-            </div>
-          )}
           <button
-            className="ghost theme-switch"
-            title={theme === "mist" ? "切换到樱粉和风主题" : "切换到淡蓝简洁主题"}
-            aria-label={theme === "mist" ? "切换到樱粉和风主题" : "切换到淡蓝简洁主题"}
-            onClick={toggleTheme}
+            className="theme-toggle-btn"
+            title="切换主题"
+            onClick={() => setTheme(prev => prev === "blossom" ? "mist" : "blossom")}
           >
-            <span className="nav-glyph"><Palette size={16} strokeWidth={1.9} /></span>
-            {sidebarCollapsed ? null : <strong>{theme === "mist" ? "切回樱粉" : "切换淡蓝"}</strong>}
+            <span className="icon-wrapper"><Palette size={16} /></span>
+            {!sidebarCollapsed && <span className="label">{theme === "mist" ? "切至樱粉 (Blossom)" : "切至淡蓝 (Mist)"}</span>}
           </button>
         </div>
       </aside>
 
-      <section className="workspace-panel">{renderContent()}</section>
+      <section className="main-content">
+        {renderContent()}
+      </section>
     </main>
   );
 }
