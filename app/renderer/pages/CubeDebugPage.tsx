@@ -29,9 +29,10 @@ import {
 import type { RuntimeState } from "@shared/runtime";
 import { ALL_MOVES, type CubeMoveEvent, type MoveToken } from "@shared/move";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Activity, BookOpenText, Compass, House, Info, Palette, PanelLeftClose, PanelLeftOpen, Plus, Save, Sparkles, Trash2, Bluetooth, Play, Square, AlertOctagon, RefreshCw, MousePointer2, Settings2, Inbox, Ghost } from "lucide-react";
+import { Activity, BookOpenText, CircleHelp, Compass, House, Info, Palette, PanelLeftClose, PanelLeftOpen, Plus, Save, Sparkles, Trash2, Bluetooth, Play, Square, AlertOctagon, RefreshCw, MousePointer2, Settings2, Inbox, Ghost } from "lucide-react";
 import { createSmartCubeConnector, type CubeDebugEntry } from "../../cube";
 import { getRememberedMac, saveMacInputValue } from "../../cube/core/mac";
+import appIconUrl from "../../../assets/favicon.svg";
 
 type ConnectionStatus = "disconnected" | "connecting" | "connected" | "error";
 type ViewKey = "home" | "profiles" | "moves" | "actions" | "diagnostics" | "about";
@@ -117,8 +118,8 @@ function getDiagnosticsSummary(status: ConnectionStatus, errorText: string, debu
     return {
       tone: "healthy" as const,
       title: "连接状态正常",
-      detail: "智能魔方已连接，当前可以接收转动并触发激活方案。",
-      action: "如果动作没有按预期执行，先检查当前方案是否已经绑定对应转动。"
+      detail: "智能魔方已连接，当前可以接收转动并触发激活方案",
+      action: "如果动作没有按预期执行，先检查当前方案是否已经绑定对应转动"
     };
   }
 
@@ -126,8 +127,8 @@ function getDiagnosticsSummary(status: ConnectionStatus, errorText: string, debu
     return {
       tone: "pending" as const,
       title: "正在建立连接",
-      detail: "应用正在等待蓝牙设备完成连接和协议初始化。",
-      action: "请保持魔方处于唤醒状态，并等待连接结果返回。"
+      detail: "应用正在等待蓝牙设备完成连接和协议初始化",
+      action: "请保持魔方处于唤醒状态，并等待连接结果返回"
     };
   }
 
@@ -135,16 +136,16 @@ function getDiagnosticsSummary(status: ConnectionStatus, errorText: string, debu
     return {
       tone: "warning" as const,
       title: "连接出现问题",
-      detail: errorText || "最近一次连接过程没有成功完成。",
-      action: "请重新尝试连接；如果连续失败，查看详细日志定位问题。"
+      detail: errorText || "最近一次连接过程没有成功完成",
+      action: "请重新尝试连接；如果连续失败，查看详细日志定位问题"
     };
   }
 
   return {
     tone: debugCount > 0 ? "pending" as const : "idle" as const,
     title: "设备尚未连接",
-    detail: "当前没有活跃的智能魔方连接。",
-    action: "点击“连接设备”开始连接；如果设备曾经连接过，可以结合下方日志回看最近一次连接过程。"
+    detail: "当前没有活跃的智能魔方连接",
+    action: "点击“连接设备”开始连接"
   };
 }
 
@@ -174,7 +175,7 @@ function getTargetOptions(step: MacroStepConfig) {
 
 function getRubikeyApi() {
   if (!window.rubikey) {
-    throw new Error("RubiKey preload API 未注入，请彻底退出后重新打开应用，或重新打包 portable 版本。");
+    throw new Error("RubiKey preload API 未注入，请彻底退出后重新打开应用，或重新打包 portable 版本");
   }
 
   return {
@@ -197,6 +198,7 @@ export function CubeDebugPage() {
   const gyroConfigRef = useRef(createDefaultProfileConfig().gyroMouse);
   const gyroBasisRef = useRef<ReturnType<typeof createGyroBasis> | null>(null);
   const gyroPreviewRef = useRef(createIdleGyroPreviewState());
+  const macHelpPopoverRef = useRef<HTMLSpanElement | null>(null);
   const[activeView, setActiveView] = useState<ViewKey>("home");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.localStorage.getItem("rubikey.sidebar.collapsed") === "1");
   const [theme, setTheme] = useState<ThemeKey>(() => {
@@ -222,6 +224,7 @@ export function CubeDebugPage() {
   const[pendingMove, setPendingMove] = useState<MoveToken | "">("");
   const [recordingMove, setRecordingMove] = useState<MoveToken | null>(null);
   const [recordingHint, setRecordingHint] = useState<string>("");
+  const [isMacHelpOpen, setIsMacHelpOpen] = useState(false);
 
   const canUseBluetooth = useMemo(
     () => typeof navigator !== "undefined" && "bluetooth" in navigator,[]
@@ -252,6 +255,34 @@ export function CubeDebugPage() {
     document.body.dataset.theme = theme;
     window.localStorage.setItem(THEME_STORAGE_KEY, theme);
   }, [theme]);
+
+  useEffect(() => {
+    if (!isMacHelpOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target;
+      if (target instanceof Node && macHelpPopoverRef.current?.contains(target)) {
+        return;
+      }
+      setIsMacHelpOpen(false);
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsMacHelpOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    window.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [isMacHelpOpen]);
 
   useEffect(() => {
     if (!pendingMove && availableMoves.length > 0) {
@@ -799,9 +830,40 @@ export function CubeDebugPage() {
               <span className="device-meta">{brand !== "unknown" ? brand : "未知品牌"} • {getStatusLabel(status)}</span>
             </div>
 
-            <details className="mac-input-group">
+            <details className="mac-input-group" onToggle={() => setIsMacHelpOpen(false)}>
               <summary className="mac-label" style={{ cursor: "pointer", userSelect: "none" }}>
-                高级设置：手动指定 MAC 地址
+                推荐：手动输入 MAC 地址以防自动获取失败/错误
+                <span className="mac-help-popover-wrap" ref={macHelpPopoverRef}>
+                  <button
+                    type="button"
+                    className="mac-help-trigger"
+                    title="查看 MAC 获取说明"
+                    aria-label="查看 MAC 获取说明"
+                    aria-expanded={isMacHelpOpen}
+                    aria-haspopup="dialog"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setIsMacHelpOpen((prev) => !prev);
+                    }}
+                    onMouseDown={(event) => event.stopPropagation()}
+                  >
+                    <CircleHelp size={14} strokeWidth={2} />
+                  </button>
+                  {isMacHelpOpen ? (
+                    <span className="mac-help-popover" role="dialog" aria-label="MAC 地址获取说明">
+                      <span className="mac-help-title">获取 MAC 地址的方法如下（打开对应的网址，通过设备名称查找对应的 MAC 地址）：</span>
+                      <span className="mac-help-row">
+                        <span className="mac-help-browser">Chrome:</span>
+                        <code>chrome://bluetooth-internals/#devices</code>
+                      </span>
+                      <span className="mac-help-row">
+                        <span className="mac-help-browser">Edge:</span>
+                        <code>edge://bluetooth-internals/#devices</code>
+                      </span>
+                    </span>
+                  ) : null}
+                </span>
               </summary>
               <input
                 id="manual-mac"
@@ -921,8 +983,8 @@ export function CubeDebugPage() {
                   </div>
                   <p className="text-sm mt-sm text-secondary">
                     {profileConfig.gyroMouse.mode === "game"
-                      ? "游戏模式会把位移拆成更慢的脉冲输入，更适合 Minecraft 这类第一人称视角。"
-                      : "桌面模式保持连续鼠标位移，更适合常规桌面指针控制。"}
+                      ? "游戏模式会把位移拆成更慢的脉冲输入，更适合 Minecraft 这类第一人称视角"
+                      : "桌面模式保持连续鼠标位移，更适合常规桌面指针控制"}
                   </p>
                 </div>
 
@@ -984,12 +1046,12 @@ export function CubeDebugPage() {
       <div className="workspace-container full-height">
         <div className="page-header">
           <div>
-            <h2>方案与映射</h2>
-            <p>管理不同场景的魔方转动到键鼠的映射规则</p>
+            <h2>方案映射</h2>
+            <p>配置不同场景的映射规则</p>
           </div>
           <div className="header-actions">
             <span className="save-status">{saveState}</span>
-            <button className="btn-primary icon-only" title="强制保存" onClick={saveProfiles}>
+            <button className="btn-primary icon-only" title="保存" onClick={saveProfiles}>
               <Save size={16} />
             </button>
           </div>
@@ -1034,12 +1096,12 @@ export function CubeDebugPage() {
             <div className="add-rule-bar">
               <span className="add-label">新增映射：</span>
               <select className="select-field" value={pendingMove} onChange={(event) => setPendingMove(event.target.value as MoveToken | "")}>
-                {availableMoves.length === 0 ? <option value="">无剩余可用转动</option> : availableMoves.map((move) => (
-                  <option key={move} value={move}>{move} (如 U, R')</option>
+                {availableMoves.length === 0 ? <option value="">已无可用转动</option> : availableMoves.map((move) => (
+                  <option key={move} value={move}>{move}</option>
                 ))}
               </select>
               <button className="btn-primary" onClick={addBinding} disabled={!pendingMove}>
-                <Plus size={16} /> 添加
+                <Plus size={14} />
               </button>
             </div>
 
@@ -1047,7 +1109,7 @@ export function CubeDebugPage() {
               {boundMoves.length === 0 ? (
                 <div className="empty-state-box">
                   <Ghost strokeWidth={1.5} />
-                  <span>当前方案没有任何规则，请从上方添加。</span>
+                  <span>当前方案没有任何规则，请从上方添加</span>
                 </div>
               ) : boundMoves.map((move) => {
                 const action = activeProfile.rules[move];
@@ -1200,7 +1262,7 @@ export function CubeDebugPage() {
          <div className="page-header">
           <div>
             <h2>最近转动</h2>
-            <p>魔方传回的原始转动数据，共记录 {moveLogs.length} 条</p>
+            <p>原始转动数据，共记录 {moveLogs.length} 条</p>
           </div>
         </div>
         <div className="log-panel">
@@ -1226,7 +1288,7 @@ export function CubeDebugPage() {
         <div className="page-header">
           <div>
             <h2>执行回响</h2>
-            <p>应用实际触发的系统级操作日志</p>
+            <p>实际触发的操作日志</p>
           </div>
         </div>
         <div className="log-panel highlight">
@@ -1259,18 +1321,18 @@ export function CubeDebugPage() {
             </div>
             <p className="diag-detail">{summary.detail}</p>
             <div className="diag-action">
-              <span className="action-label">建议动作：</span>
+              <span className="action-label">建议：</span>
               <span>{summary.action}</span>
             </div>
           </section>
 
           <section className="diag-log-panel">
-            <h3>详细设备通信日志</h3>
+            <h3>详细通信日志</h3>
             <div className="log-panel small">
               {debugLogs.length === 0 ? (
                 <div className="empty-state-box">
                   <Inbox strokeWidth={1.5} />
-                  <span>暂无通信日志</span>
+                  <span>暂无日志</span>
                 </div>
               ) : debugLogs.map((log, index) => (
                 <div className="log-item complex" key={`${log.timestamp}-${index}`}>
@@ -1294,10 +1356,10 @@ export function CubeDebugPage() {
       <div className="workspace-container about-page">
         <section className="about-hero">
           <div className="logo-placeholder">
-            <Sparkles size={48} />
+            <img className="about-app-logo" src={appIconUrl} alt="RubiKey 应用图标" />
           </div>
           <h2>RubiKey</h2>
-          <p>基于 Electron 构建的 Windows 桌面工具，<br/>让智能魔方成为你的系统级控制器。</p>
+          <p>基于 Electron 构建的 Windows 桌面工具<br/>让智能魔方成为你的系统级控制器</p>
         </section>
 
         <div className="about-cards">
@@ -1310,8 +1372,9 @@ export function CubeDebugPage() {
             <a className="info-value link" href={REPOSITORY_URL} target="_blank" rel="noreferrer">GitHub 主页</a>
           </div>
           <div className="dashboard-card">
-            <span className="info-label">测试说明</span>
-            <p className="text-sm mt-sm text-secondary">当前版本主要面向 Windows 11 环境，兼容部分 GAN 与 Moyu 新协议设备。如遇问题欢迎提交 Issue 或 PR。</p>
+            <span className="info-label">说明</span>
+            <p className="text-sm mt-sm text-secondary">当前版本主要测试了 Windows 11 环境，兼容部分 GAN 与 Moyu 新协议设备<br></br><br></br>
+              如遇问题欢迎提交 Issue 或 PR（点个 Star 支持一下喵 ✨）</p>
           </div>
         </div>
       </div>
@@ -1369,7 +1432,7 @@ export function CubeDebugPage() {
             onClick={() => setTheme(prev => prev === "blossom" ? "mist" : "blossom")}
           >
             <span className="icon-wrapper"><Palette size={16} /></span>
-            {!sidebarCollapsed && <span className="label">{theme === "mist" ? "切至樱粉 (Blossom)" : "切至淡蓝 (Mist)"}</span>}
+            {!sidebarCollapsed && <span className="label">{theme === "mist" ? "切至樱粉" : "切至淡蓝"}</span>}
           </button>
         </div>
       </aside>
