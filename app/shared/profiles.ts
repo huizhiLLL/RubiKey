@@ -1,4 +1,9 @@
-import { createDefaultKeyboardAction, type MacroActionConfig } from "./macro.js";
+import {
+  createDefaultKeyboardAction,
+  normalizeMacroAction,
+  type MacroActionConfig,
+  type RawMacroActionConfig
+} from "./macro.js";
 import { createDefaultGyroMouseConfig, normalizeGyroMouseConfig, type GyroMouseConfig } from "./gyro.js";
 import { ALL_MOVES, type MoveToken } from "./move.js";
 import defaultProfiles from "./default-profiles.json" with { type: "json" };
@@ -23,7 +28,7 @@ export interface ProfileConfig {
 type DefaultProfileSeed = {
   id: string;
   name: string;
-  rules?: Partial<Record<MoveToken, MacroActionConfig | null>>;
+  rules?: Partial<Record<MoveToken, RawMacroActionConfig>>;
 };
 
 export function createEmptyRules(): ProfileRuleMap {
@@ -38,11 +43,10 @@ export function getUnboundMoves(profile: MappingProfile) {
   return ALL_MOVES.filter((move) => profile.rules[move] == null);
 }
 
-export function normalizeProfileRules(input?: Partial<Record<MoveToken, MacroActionConfig | null>>) {
+export function normalizeProfileRules(input?: Partial<Record<MoveToken, RawMacroActionConfig>>) {
   const rules = createEmptyRules();
   for (const move of ALL_MOVES) {
-    const value = input?.[move];
-    rules[move] = value ? { ...value } : null;
+    rules[move] = normalizeMacroAction(input?.[move]);
   }
   return rules;
 }

@@ -303,6 +303,13 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .rule-trigger { display: flex; align-items: center; gap: 12px; min-width: 100px; }
 .move-badge { background: var(--c-primary); color: white; padding: 4px 12px; border-radius: 6px; font-family: monospace; font-size: 1.1rem; font-weight: bold; }
 .arrow { color: var(--c-text-muted); }
+.rule-body { display: flex; flex-direction: column; gap: 12px; flex: 1; min-width: 0; }
+.rule-summary-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.rule-summary-text { color: var(--c-secondary); font-size: 0.9rem; }
+.step-add-btn { padding: 8px 12px; font-size: 0.85rem; }
+.macro-steps { display: flex; flex-direction: column; gap: 10px; }
+.macro-step-row { display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: var(--radius-md); background: var(--c-bg-app); border: 1px solid var(--c-border); }
+.step-index { font-size: 0.8rem; font-weight: 700; color: var(--c-primary); letter-spacing: 0.04em; text-transform: uppercase; }
 .rule-config-row { display: flex; flex-wrap: wrap; gap: 12px; flex: 1; align-items: center; }
 .rule-config-row .select-field { width: auto; flex: 1; min-width: 110px; }
 .duration-wrapper { display: flex; align-items: center; gap: 4px; background: var(--c-bg-app); border: 1px solid var(--c-border); border-radius: var(--radius-md); padding-right: 10px; transition: var(--transition-fast); }
@@ -310,6 +317,8 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .duration-input { border: none; background: transparent; box-shadow: none; width: 70px; text-align: right; }
 .duration-input:focus { box-shadow: none; }
 .unit { font-size: 0.8rem; color: var(--c-text-muted); }
+.step-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.step-desc { font-size: 0.85rem; color: var(--c-text-muted); }
 .delete-btn { color: var(--c-text-muted); border-color: transparent; }
 .delete-btn:hover { color: var(--c-danger); border-color: var(--c-danger); background: color-mix(in srgb, var(--c-danger) 10%, transparent); }
 
@@ -358,6 +367,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 @media (max-width: 768px) {
   .rule-card { flex-direction: column; align-items: stretch; }
   .rule-trigger { justify-content: center; margin-bottom: 8px; }
+  .rule-summary-line, .step-actions { flex-direction: column; align-items: stretch; }
   .rule-config-row { flex-direction: column; align-items: stretch; }
   .duration-wrapper, .select-field, .rule-config-row .select-field { width: 100%; }
 }

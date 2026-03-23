@@ -2,12 +2,16 @@ import {
   ACTION_BEHAVIORS,
   KEYBOARD_OPTIONS,
   MOUSE_OPTIONS,
+  createDefaultKeyboardAction,
+  createDefaultMacroStep,
   describeAction,
+  describeMacroStep,
   type ActionBehavior,
   type ActionKind,
+  type KeyboardTarget,
   type MacroActionConfig,
-  type MouseButton,
-  type LetterKey
+  type MacroStepConfig,
+  type StepExecutionMode
 } from "@shared/macro";
 import {
   createBlankProfile,
@@ -61,31 +65,50 @@ function getStatusLabel(status: ConnectionStatus) {
   return "未连接";
 }
 
-function describeActionSummary(action: MacroActionConfig | null) {
-  if (!action) {
-    return "未设置动作";
-  }
-
-  const subject = action.kind === "keyboard"
-    ? `键盘 ${String(action.target).toUpperCase()}`
-    : action.target === "left"
-      ? "鼠标左键"
-      : "鼠标右键";
-
-  return action.behavior === "tap"
-    ? `${subject} 单击`
-    : `${subject} 按住 ${action.durationMs}ms`;
+function formatRuleShort(move: string, action: MacroActionConfig | null) {
+  return action ? `${move}->${describeAction(action)}` : `${move}->未绑定`;
 }
 
-function formatRuleShort(move: string, action: MacroActionConfig | null) {
-  if (!action) return `${move}->未绑定`;
-  const isKb = action.kind === "keyboard";
-  const targetStr = isKb ? `“${String(action.target).toUpperCase()}”` : (action.target === "left" ? "左键" : "右键");
-  
-  if (action.behavior === "tap") {
-     return `${move}->${isKb ? `单击${targetStr}` : `${targetStr}单击`}`;
-  } else {
-     return `${move}->${isKb ? `长按${targetStr}` : `${targetStr}长按`} ${action.durationMs}ms`;
+function keyboardEventToTarget(event: KeyboardEvent): KeyboardTarget | null {
+  if (/^Key[A-Z]$/.test(event.code)) {
+    return event.code.slice(3).toLowerCase() as KeyboardTarget;
+  }
+
+  if (/^Digit[0-9]$/.test(event.code)) {
+    return event.code.slice(5) as KeyboardTarget;
+  }
+
+  switch (event.code) {
+    case "ArrowUp":
+      return "up";
+    case "ArrowDown":
+      return "down";
+    case "ArrowLeft":
+      return "left";
+    case "ArrowRight":
+      return "right";
+    case "Space":
+      return "space";
+    case "Enter":
+    case "NumpadEnter":
+      return "enter";
+    case "Tab":
+      return "tab";
+    case "Escape":
+      return "esc";
+    case "Backspace":
+      return "backspace";
+    case "ShiftLeft":
+    case "ShiftRight":
+      return "shift";
+    case "ControlLeft":
+    case "ControlRight":
+      return "ctrl";
+    case "AltLeft":
+    case "AltRight":
+      return "alt";
+    default:
+      return null;
   }
 }
 
@@ -94,7 +117,7 @@ function getDiagnosticsSummary(status: ConnectionStatus, errorText: string, debu
     return {
       tone: "healthy" as const,
       title: "连接状态正常",
-      detail: "智能魔方设备已连接，当前可以接收转动并触发激活方案。",
+      detail: "智能魔方已连接，当前可以接收转动并触发激活方案。",
       action: "如果动作没有按预期执行，先检查当前方案是否已经绑定对应转动。"
     };
   }
@@ -104,7 +127,7 @@ function getDiagnosticsSummary(status: ConnectionStatus, errorText: string, debu
       tone: "pending" as const,
       title: "正在建立连接",
       detail: "应用正在等待蓝牙设备完成连接和协议初始化。",
-      action: "请保持魔方处于可连接状态，并等待连接结果返回。"
+      action: "请保持魔方处于唤醒状态，并等待连接结果返回。"
     };
   }
 
@@ -113,7 +136,7 @@ function getDiagnosticsSummary(status: ConnectionStatus, errorText: string, debu
       tone: "warning" as const,
       title: "连接出现问题",
       detail: errorText || "最近一次连接过程没有成功完成。",
-      action: "请重新尝试连接；如果连续失败，再查看下方详细日志定位是哪一步出错。"
+      action: "请重新尝试连接；如果连续失败，查看详细日志定位问题。"
     };
   }
 
@@ -131,9 +154,22 @@ function cloneProfilesConfig(config: ProfileConfig): ProfileConfig {
     gyroMouse: { ...config.gyroMouse },
     profiles: config.profiles.map((profile) => ({
       ...profile,
-      rules: { ...profile.rules }
+      rules: Object.fromEntries(
+        Object.entries(profile.rules).map(([move, action]) => [
+          move,
+          action
+            ? {
+                steps: action.steps.map((step) => ({ ...step, targets: [...step.targets] }))
+              }
+            : null
+        ])
+      ) as typeof profile.rules
     }))
   };
+}
+
+function getTargetOptions(step: MacroStepConfig) {
+  return step.kind === "mouse" ? MOUSE_OPTIONS : KEYBOARD_OPTIONS;
 }
 
 function getRubikeyApi() {
@@ -155,6 +191,9 @@ export function CubeDebugPage() {
   const mappingEnabledRef = useRef(false);
   const hasLoadedProfilesRef = useRef(false);
   const saveTimerRef = useRef<number | null>(null);
+  const recordingBaselineRef = useRef<MacroActionConfig | null>(null);
+  const recordingActiveKeysRef = useRef<Set<KeyboardTarget>>(new Set());
+  const recordingChordRef = useRef<Set<KeyboardTarget>>(new Set());
   const gyroConfigRef = useRef(createDefaultProfileConfig().gyroMouse);
   const gyroBasisRef = useRef<ReturnType<typeof createGyroBasis> | null>(null);
   const gyroPreviewRef = useRef(createIdleGyroPreviewState());
@@ -181,6 +220,8 @@ export function CubeDebugPage() {
   const [debugLogs, setDebugLogs] = useState<CubeDebugEntry[]>([]);
   const [executionHints, setExecutionHints] = useState<string[]>([]);
   const[pendingMove, setPendingMove] = useState<MoveToken | "">("");
+  const [recordingMove, setRecordingMove] = useState<MoveToken | null>(null);
+  const [recordingHint, setRecordingHint] = useState<string>("");
 
   const canUseBluetooth = useMemo(
     () => typeof navigator !== "undefined" && "bluetooth" in navigator,[]
@@ -229,7 +270,7 @@ export function CubeDebugPage() {
       ]);
       setProfileConfig(loadedProfiles);
       setRuntimeState(loadedRuntime);
-      setSaveState(`配置已同步`);
+      setSaveState(`配置已保存`);
       hasLoadedProfilesRef.current = true;
     })().catch((error) => {
       console.error(error);
@@ -315,6 +356,70 @@ export function CubeDebugPage() {
       driverRef.current = null;
     };
   },[]);
+
+  useEffect(() => {
+    if (!recordingMove) {
+      recordingActiveKeysRef.current.clear();
+      recordingChordRef.current.clear();
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = keyboardEventToTarget(event);
+      if (!target || event.repeat) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (!recordingActiveKeysRef.current.has(target)) {
+        recordingActiveKeysRef.current.add(target);
+        recordingChordRef.current.add(target);
+        setRecordingHint(`录制中：${Array.from(recordingChordRef.current).join(" + ")}`);
+      }
+    };
+
+    const handleKeyUp = (event: KeyboardEvent) => {
+      const target = keyboardEventToTarget(event);
+      if (!target) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      recordingActiveKeysRef.current.delete(target);
+
+      if (recordingActiveKeysRef.current.size === 0 && recordingChordRef.current.size > 0) {
+        const targets = Array.from(recordingChordRef.current);
+        patchConfig((draft) => {
+          const action = draft.profiles
+            .find((profile) => profile.id === draft.activeProfileId)
+            ?.rules[recordingMove];
+          if (!action) {
+            return;
+          }
+          action.steps.push({
+            kind: "keyboard",
+            targets,
+            behavior: "tap",
+            mode: targets.length > 1 ? "chord" : "sequence",
+            durationMs: 100
+          });
+        });
+        recordingChordRef.current.clear();
+        setRecordingHint(`已录制：${targets.join(" + ")}`);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+    };
+  }, [recordingMove]);
 
   useEffect(() => {
     const driver = driverRef.current;
@@ -452,7 +557,7 @@ export function CubeDebugPage() {
     patchConfig((draft) => {
       const profile = draft.profiles.find((item) => item.id === draft.activeProfileId);
       if (!profile || profile.rules[pendingMove]) return;
-      profile.rules[pendingMove] = { kind: "keyboard", target: "a", behavior: "tap", durationMs: 100 };
+      profile.rules[pendingMove] = createDefaultKeyboardAction("a");
       profile.updatedAt = Date.now();
     });
   }
@@ -467,51 +572,158 @@ export function CubeDebugPage() {
     });
   }
 
-  function updateRuleKind(move: MoveToken, kindValue: string) {
+  function addRuleStep(move: MoveToken) {
+    if (!activeProfile) return;
+    patchConfig((draft) => {
+      const profile = draft.profiles.find((item) => item.id === draft.activeProfileId);
+      const action = profile?.rules[move];
+      if (!profile || !action) return;
+      action.steps.push(createDefaultMacroStep("a"));
+      profile.updatedAt = Date.now();
+    });
+  }
+
+  function addStepTarget(move: MoveToken, stepIndex: number) {
+    if (!activeProfile) return;
+    patchConfig((draft) => {
+      const profile = draft.profiles.find((item) => item.id === draft.activeProfileId);
+      const action = profile?.rules[move];
+      const step = action?.steps[stepIndex];
+      if (!profile || !action || !step) return;
+      step.targets.push(step.kind === "keyboard" ? "a" : "left");
+      step.targets = Array.from(new Set(step.targets));
+      profile.updatedAt = Date.now();
+    });
+  }
+
+  function removeStepTarget(move: MoveToken, stepIndex: number, targetIndex: number) {
+    if (!activeProfile) return;
+    patchConfig((draft) => {
+      const profile = draft.profiles.find((item) => item.id === draft.activeProfileId);
+      const action = profile?.rules[move];
+      const step = action?.steps[stepIndex];
+      if (!profile || !action || !step || step.targets.length <= 1) return;
+      step.targets.splice(targetIndex, 1);
+      profile.updatedAt = Date.now();
+    });
+  }
+
+  function removeRuleStep(move: MoveToken, stepIndex: number) {
+    if (!activeProfile) return;
+    patchConfig((draft) => {
+      const profile = draft.profiles.find((item) => item.id === draft.activeProfileId);
+      const action = profile?.rules[move];
+      if (!profile || !action || action.steps.length <= 1) return;
+      action.steps.splice(stepIndex, 1);
+      profile.updatedAt = Date.now();
+    });
+  }
+
+  function updateRuleKind(move: MoveToken, stepIndex: number, kindValue: string) {
     if (!activeProfile) return;
     patchConfig((draft) => {
       const profile = draft.profiles.find((item) => item.id === draft.activeProfileId);
       if (!profile) return;
       const action = profile.rules[move];
-      if (!action) return;
+      const step = action?.steps[stepIndex];
+      if (!action || !step) return;
       const kind = kindValue as ActionKind;
-      profile.rules[move] = kind === "keyboard"
-        ? { kind: "keyboard", target: "a", behavior: action.behavior, durationMs: action.durationMs }
-        : { kind: "mouse", target: "left", behavior: action.behavior, durationMs: action.durationMs };
+      action.steps[stepIndex] = kind === "keyboard"
+        ? { kind: "keyboard", targets: ["a"], behavior: step.behavior, durationMs: step.durationMs, mode: step.mode }
+        : { kind: "mouse", targets: ["left"], behavior: step.behavior, durationMs: step.durationMs, mode: step.mode };
       profile.updatedAt = Date.now();
     });
   }
 
-  function updateRuleTarget(move: MoveToken, target: string) {
+  function updateRuleTarget(move: MoveToken, stepIndex: number, targetIndex: number, target: string) {
     if (!activeProfile) return;
     patchConfig((draft) => {
       const profile = draft.profiles.find((item) => item.id === draft.activeProfileId);
       const action = profile?.rules[move];
-      if (!profile || !action) return;
-      action.target = target as LetterKey | MouseButton;
+      const step = action?.steps[stepIndex];
+      if (!profile || !action || !step) return;
+      step.targets[targetIndex] = target as KeyboardTarget;
+      step.targets = Array.from(new Set(step.targets));
       profile.updatedAt = Date.now();
     });
   }
 
-  function updateRuleBehavior(move: MoveToken, behavior: string) {
+  function updateRuleBehavior(move: MoveToken, stepIndex: number, behavior: string) {
     if (!activeProfile) return;
     patchConfig((draft) => {
       const profile = draft.profiles.find((item) => item.id === draft.activeProfileId);
       const action = profile?.rules[move];
-      if (!profile || !action) return;
-      action.behavior = behavior as ActionBehavior;
+      const step = action?.steps[stepIndex];
+      if (!profile || !action || !step) return;
+      step.behavior = behavior as ActionBehavior;
       profile.updatedAt = Date.now();
     });
   }
 
-  function updateRuleDuration(move: MoveToken, durationValue: string) {
+  function updateRuleMode(move: MoveToken, stepIndex: number, mode: string) {
+    if (!activeProfile) return;
+    patchConfig((draft) => {
+      const profile = draft.profiles.find((item) => item.id === draft.activeProfileId);
+      const action = profile?.rules[move];
+      const step = action?.steps[stepIndex];
+      if (!profile || !action || !step) return;
+      step.mode = mode === "chord" ? "chord" : "sequence";
+      profile.updatedAt = Date.now();
+    });
+  }
+
+  function startMacroRecording(move: MoveToken) {
+    if (!activeProfile) return;
+    recordingBaselineRef.current = activeProfile.rules[move]
+      ? {
+          steps: activeProfile.rules[move]!.steps.map((step) => ({ ...step, targets: [...step.targets] }))
+        }
+      : null;
+
+    patchConfig((draft) => {
+      const profile = draft.profiles.find((item) => item.id === draft.activeProfileId);
+      if (!profile) return;
+      profile.rules[move] = { steps: [] };
+      profile.updatedAt = Date.now();
+    });
+
+    setRecordingMove(move);
+    setRecordingHint("录制中：请在当前窗口按下要触发的键或组合键");
+  }
+
+  function stopMacroRecording(save: boolean) {
+    const move = recordingMove;
+    if (!move) return;
+
+    if (!save) {
+      patchConfig((draft) => {
+        const profile = draft.profiles.find((item) => item.id === draft.activeProfileId);
+        if (!profile) return;
+        profile.rules[move] = recordingBaselineRef.current
+          ? {
+              steps: recordingBaselineRef.current.steps.map((step) => ({ ...step, targets: [...step.targets] }))
+            }
+          : null;
+        profile.updatedAt = Date.now();
+      });
+    }
+
+    recordingActiveKeysRef.current.clear();
+    recordingChordRef.current.clear();
+    recordingBaselineRef.current = null;
+    setRecordingMove(null);
+    setRecordingHint("");
+  }
+
+  function updateRuleDuration(move: MoveToken, stepIndex: number, durationValue: string) {
     if (!activeProfile) return;
     const duration = Math.max(10, Number.parseInt(durationValue || "0", 10) || 100);
     patchConfig((draft) => {
       const profile = draft.profiles.find((item) => item.id === draft.activeProfileId);
       const action = profile?.rules[move];
-      if (!profile || !action) return;
-      action.durationMs = duration;
+      const step = action?.steps[stepIndex];
+      if (!profile || !action || !step) return;
+      step.durationMs = duration;
       profile.updatedAt = Date.now();
     });
   }
@@ -529,6 +741,12 @@ export function CubeDebugPage() {
   function updateGyroBoolean<K extends "enabled" | "swapAxes" | "invertHorizontal" | "invertVertical">(key: K, value: boolean) {
     patchConfig((draft) => {
       draft.gyroMouse[key] = value as ProfileConfig["gyroMouse"][K];
+    });
+  }
+
+  function updateGyroMode(value: string) {
+    patchConfig((draft) => {
+      draft.gyroMouse.mode = value === "game" ? "game" : "desktop";
     });
   }
 
@@ -553,7 +771,7 @@ export function CubeDebugPage() {
       setRuntimeState(runtime);
     } catch (error) {
       console.error(error);
-      setSaveState(error instanceof Error ? `同步失败：${error.message}` : "同步失败");
+      setSaveState(error instanceof Error ? `保存失败：${error.message}` : "保存失败");
     }
   }
 
@@ -562,7 +780,7 @@ export function CubeDebugPage() {
       <div className="workspace-container">
         <div className="page-header">
           <h2>仪表盘</h2>
-          <p>总览设备状态与快速控制</p>
+          <p>总览状态与控制</p>
         </div>
 
         <div className="dashboard-grid">
@@ -684,11 +902,30 @@ export function CubeDebugPage() {
               <div className="gyro-preview-bar">
                 <div className="preview-item"><span>支持状态:</span> <strong>{gyroSupported ? "支持" : "未检测到"}</strong></div>
                 <div className="preview-item"><span>设备 Gyro:</span> <strong>{gyroDeviceEnabled ? "开启" : "关闭"}</strong></div>
+                <div className="preview-item"><span>模式:</span> <strong>{profileConfig.gyroMouse.mode === "game" ? "游戏" : "桌面"}</strong></div>
                 <div className="preview-item"><span>Pitch (上下):</span> <strong>{gyroPreview.pitchDeg.toFixed(1)}°</strong></div>
                 <div className="preview-item"><span>Roll (左右):</span> <strong>{gyroPreview.rollDeg.toFixed(1)}°</strong></div>
               </div>
 
               <div className="settings-grid">
+                <div className="setting-group">
+                  <h4>控制模式</h4>
+                  <div className="input-row">
+                    <label>
+                      模式
+                      <select className="select-field" value={profileConfig.gyroMouse.mode} onChange={(e) => updateGyroMode(e.target.value)}>
+                        <option value="desktop">桌面模式</option>
+                        <option value="game">游戏模式</option>
+                      </select>
+                    </label>
+                  </div>
+                  <p className="text-sm mt-sm text-secondary">
+                    {profileConfig.gyroMouse.mode === "game"
+                      ? "游戏模式会把位移拆成更慢的脉冲输入，更适合 Minecraft 这类第一人称视角。"
+                      : "桌面模式保持连续鼠标位移，更适合常规桌面指针控制。"}
+                  </p>
+                </div>
+
                 <div className="setting-group">
                   <h4>死区阈值 (°)</h4>
                   <div className="input-row">
@@ -814,41 +1051,133 @@ export function CubeDebugPage() {
                 </div>
               ) : boundMoves.map((move) => {
                 const action = activeProfile.rules[move];
-                const targetOptions = action?.kind === "mouse" ? MOUSE_OPTIONS : KEYBOARD_OPTIONS;
                 return (
                   <div className="rule-card" key={move}>
                     <div className="rule-trigger">
                       <div className="move-badge">{move}</div>
                       <span className="arrow">➔</span>
                     </div>
-                    
-                    <div className="rule-config-row">
-                      <select className="select-field small" value={action?.kind ?? ""} onChange={(event) => updateRuleKind(move, event.target.value)}>
-                        <option value="keyboard">键盘</option>
-                        <option value="mouse">鼠标</option>
-                      </select>
-                      
-                      <select className="select-field small" value={action?.target ?? ""} onChange={(event) => updateRuleTarget(move, event.target.value)} disabled={!action}>
-                        {action ? targetOptions.map((option) => (
-                          <option key={option.value} value={option.value}>{option.label}</option>
-                        )) : null}
-                      </select>
-                      
-                      <select className="select-field small" value={action?.behavior ?? "tap"} onChange={(event) => updateRuleBehavior(move, event.target.value)} disabled={!action}>
-                        {ACTION_BEHAVIORS.map((behavior) => (
-                          <option key={behavior} value={behavior}>{behavior === "tap" ? "单击 (Tap)" : "按住 (Hold)"}</option>
-                        ))}
-                      </select>
-                      
-                      <div className={`duration-wrapper ${(!action || action.behavior !== "hold") ? "disabled" : ""}`}>
-                        <input
-                          className="input-field small duration-input"
-                          type="number" min={10} step={10}
-                          value={action?.durationMs ?? 100}
-                          onChange={(event) => updateRuleDuration(move, event.target.value)}
-                          disabled={!action || action.behavior !== "hold"}
-                        />
-                        <span className="unit">ms</span>
+
+                    <div className="rule-body">
+                      <div className="rule-summary-line">
+                        <span className="rule-summary-text">{describeAction(action)}</span>
+                        <div className="button-group wrap">
+                          {recordingMove === move ? (
+                            <>
+                              <button className="btn-primary step-add-btn" onClick={() => stopMacroRecording(true)}>
+                                停止并保存
+                              </button>
+                              <button className="btn-ghost step-add-btn" onClick={() => stopMacroRecording(false)}>
+                                取消录制
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button className="btn-ghost step-add-btn" onClick={() => addRuleStep(move)}>
+                                <Plus size={14} /> 添加步骤
+                              </button>
+                              <button className="btn-ghost step-add-btn" onClick={() => startMacroRecording(move)}>
+                                录制键盘宏
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      {recordingMove === move ? (
+                        <div className="step-desc" style={{ marginBottom: 8 }}>
+                          {recordingHint}
+                        </div>
+                      ) : null}
+
+                      <div className="macro-steps">
+                        {action?.steps.map((step, stepIndex) => {
+                          const targetOptions = getTargetOptions(step);
+                          return (
+                            <div className="macro-step-row" key={`${move}-step-${stepIndex}`}>
+                              <span className="step-index">步骤 {stepIndex + 1}</span>
+
+                              <div className="rule-config-row">
+                                <select
+                                  className="select-field small"
+                                  value={step.kind}
+                                  onChange={(event) => updateRuleKind(move, stepIndex, event.target.value)}
+                                >
+                                  <option value="keyboard">键盘</option>
+                                  <option value="mouse">鼠标</option>
+                                </select>
+
+                                <select
+                                  className="select-field small"
+                                  value={step.mode}
+                                  onChange={(event) => updateRuleMode(move, stepIndex, event.target.value as StepExecutionMode)}
+                                >
+                                  <option value="sequence">顺序</option>
+                                  <option value="chord">同时</option>
+                                </select>
+
+                                {step.targets.map((target, targetIndex) => (
+                                  <div key={`${move}-step-${stepIndex}-target-${targetIndex}`} className="rule-config-row" style={{ gap: 8 }}>
+                                    <select
+                                      className="select-field small"
+                                      value={target}
+                                      onChange={(event) => updateRuleTarget(move, stepIndex, targetIndex, event.target.value)}
+                                    >
+                                      {targetOptions.map((option) => (
+                                        <option key={`${step.kind}-${String(option.value)}`} value={option.value}>{option.label}</option>
+                                      ))}
+                                    </select>
+                                    <button
+                                      className="btn-ghost icon-only delete-btn"
+                                      title="移除此目标"
+                                      onClick={() => removeStepTarget(move, stepIndex, targetIndex)}
+                                      disabled={step.targets.length <= 1}
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  </div>
+                                ))}
+
+                                <button className="btn-ghost step-add-btn" onClick={() => addStepTarget(move, stepIndex)}>
+                                  <Plus size={14} /> 添加目标
+                                </button>
+
+                                <select
+                                  className="select-field small"
+                                  value={step.behavior}
+                                  onChange={(event) => updateRuleBehavior(move, stepIndex, event.target.value)}
+                                >
+                                  {ACTION_BEHAVIORS.map((behavior) => (
+                                    <option key={behavior} value={behavior}>{behavior === "tap" ? "单击 (Tap)" : "按住 (Hold)"}</option>
+                                  ))}
+                                </select>
+
+                                <div className={`duration-wrapper ${step.behavior !== "hold" ? "disabled" : ""}`}>
+                                  <input
+                                    className="input-field small duration-input"
+                                    type="number" min={10} step={10}
+                                    value={step.durationMs}
+                                    onChange={(event) => updateRuleDuration(move, stepIndex, event.target.value)}
+                                    disabled={step.behavior !== "hold"}
+                                  />
+                                  <span className="unit">ms</span>
+                                </div>
+                              </div>
+
+                              <div className="step-actions">
+                                <span className="step-desc">{describeMacroStep(step)}</span>
+                                <button
+                                  className="btn-ghost icon-only delete-btn"
+                                  title="移除此步骤"
+                                  onClick={() => removeRuleStep(move, stepIndex)}
+                                  disabled={(action?.steps.length ?? 0) <= 1}
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
 

@@ -18,9 +18,12 @@ export class GyroMouseController {
   private previewState: GyroMousePreviewState = createIdleGyroPreviewState();
   private movementTimer: NodeJS.Timeout | null = null;
   private movementQueue: Promise<void> = Promise.resolve();
+  private pendingMoveX = 0;
+  private pendingMoveY = 0;
 
   setConfig(config: GyroMouseConfig) {
     this.config = normalizeGyroMouseConfig(config);
+    this.stopLoop();
     this.syncLoop();
   }
 
@@ -60,6 +63,8 @@ export class GyroMouseController {
   resetNeutral() {
     this.basis = null;
     this.previewState = createIdleGyroPreviewState();
+    this.pendingMoveX = 0;
+    this.pendingMoveY = 0;
     this.stopLoop();
   }
 
@@ -100,16 +105,25 @@ export class GyroMouseController {
       }
 
       const { stepX, stepY } = this.previewState;
+      this.pendingMoveX += stepX;
+      this.pendingMoveY += stepY;
+      const emitX = this.consumePendingDelta("x");
+      const emitY = this.consumePendingDelta("y");
+
+      if (emitX === 0 && emitY === 0) {
+        return;
+      }
+
       this.movementQueue = this.movementQueue
         .then(async () => {
           const position = await mouse.getPosition();
           await mouse.setPosition(new Point(
-            Math.max(0, position.x + stepX),
-            Math.max(0, position.y + stepY)
+            Math.max(0, position.x + emitX),
+            Math.max(0, position.y + emitY)
           ));
         })
         .catch(() => undefined);
-    }, this.config.intervalMs);
+    }, this.getLoopInterval());
   }
 
   private stopLoop() {
@@ -117,5 +131,22 @@ export class GyroMouseController {
       clearInterval(this.movementTimer);
       this.movementTimer = null;
     }
+  }
+
+  private getLoopInterval() {
+    return this.config.mode === "game"
+      ? Math.max(this.config.intervalMs, 24)
+      : this.config.intervalMs;
+  }
+
+  private consumePendingDelta(axis: "x" | "y") {
+    const pending = axis === "x" ? this.pendingMoveX : this.pendingMoveY;
+    const emit = pending > 0 ? Math.floor(pending) : Math.ceil(pending);
+    if (axis === "x") {
+      this.pendingMoveX -= emit;
+    } else {
+      this.pendingMoveY -= emit;
+    }
+    return emit;
   }
 }

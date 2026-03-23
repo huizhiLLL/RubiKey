@@ -13,9 +13,11 @@ export interface CubeGyroEvent {
 
 export type GyroHorizontalDirection = "idle" | "left" | "right";
 export type GyroVerticalDirection = "idle" | "up" | "down";
+export type GyroMouseMode = "desktop" | "game";
 
 export interface GyroMouseConfig {
   enabled: boolean;
+  mode: GyroMouseMode;
   deadzonePitchDeg: number;
   deadzoneRollDeg: number;
   fastPitchDeg: number;
@@ -47,6 +49,7 @@ function clamp(value: number, min: number, max: number) {
 export function createDefaultGyroMouseConfig(): GyroMouseConfig {
   return {
     enabled: false,
+    mode: "desktop",
     deadzonePitchDeg: 15,
     deadzoneRollDeg: 15,
     fastPitchDeg: 30,
@@ -69,6 +72,7 @@ export function normalizeGyroMouseConfig(input?: Partial<GyroMouseConfig> | null
 
   return {
     enabled: Boolean(next.enabled),
+    mode: next.mode === "game" ? "game" : "desktop",
     deadzonePitchDeg: clamp(Number(next.deadzonePitchDeg) || defaults.deadzonePitchDeg, 4, 75),
     deadzoneRollDeg: clamp(Number(next.deadzoneRollDeg) || defaults.deadzoneRollDeg, 4, 75),
     fastPitchDeg: clamp(Number(next.fastPitchDeg) || defaults.fastPitchDeg, 6, 89),
@@ -158,6 +162,13 @@ function resolveStep(valueDeg: number, fastThresholdDeg: number, slowStepPx: num
   return Math.abs(valueDeg) >= fastThresholdDeg ? fastStepPx : slowStepPx;
 }
 
+function applyModeStep(step: number, mode: GyroMouseMode) {
+  if (mode === "game") {
+    return step / 24;
+  }
+  return step;
+}
+
 export function evaluateGyroMouse(
   basis: GyroQuaternion,
   quaternion: GyroQuaternion,
@@ -197,12 +208,12 @@ export function evaluateGyroMouse(
   const stepX = horizontalDirection === "idle"
     ? 0
     : (horizontalDirection === "right" ? 1 : -1)
-      * resolveStep(rollDeg, config.fastRollDeg, config.slowStepPx, config.fastStepPx);
+      * applyModeStep(resolveStep(rollDeg, config.fastRollDeg, config.slowStepPx, config.fastStepPx), config.mode);
 
   const stepY = verticalDirection === "idle"
     ? 0
     : (verticalDirection === "down" ? 1 : -1)
-      * resolveStep(pitchDeg, config.fastPitchDeg, config.slowStepPx, config.fastStepPx);
+      * applyModeStep(resolveStep(pitchDeg, config.fastPitchDeg, config.slowStepPx, config.fastStepPx), config.mode);
 
   return {
     basisReady: true,

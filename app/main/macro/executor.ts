@@ -1,16 +1,83 @@
 import { Button, Key, keyboard, mouse } from "@nut-tree/nut-js";
-import type { MacroActionConfig, MacroExecutionResult } from "../../shared/macro.js";
+import type {
+  KeyboardTarget,
+  MacroActionConfig,
+  MacroExecutionResult,
+  MacroStepConfig,
+  MouseButton
+} from "../../shared/macro.js";
 
 keyboard.config.autoDelayMs = 5;
 mouse.config.autoDelayMs = 5;
 mouse.config.mouseSpeed = 1800;
 
-function toButton(target: MacroActionConfig["target"]) {
+const KEYBOARD_TARGET_TO_KEY: Record<KeyboardTarget, Key> = {
+  a: Key.A,
+  b: Key.B,
+  c: Key.C,
+  d: Key.D,
+  e: Key.E,
+  f: Key.F,
+  g: Key.G,
+  h: Key.H,
+  i: Key.I,
+  j: Key.J,
+  k: Key.K,
+  l: Key.L,
+  m: Key.M,
+  n: Key.N,
+  o: Key.O,
+  p: Key.P,
+  q: Key.Q,
+  r: Key.R,
+  s: Key.S,
+  t: Key.T,
+  u: Key.U,
+  v: Key.V,
+  w: Key.W,
+  x: Key.X,
+  y: Key.Y,
+  z: Key.Z,
+  "0": Key.Num0,
+  "1": Key.Num1,
+  "2": Key.Num2,
+  "3": Key.Num3,
+  "4": Key.Num4,
+  "5": Key.Num5,
+  "6": Key.Num6,
+  "7": Key.Num7,
+  "8": Key.Num8,
+  "9": Key.Num9,
+  up: Key.Up,
+  down: Key.Down,
+  left: Key.Left,
+  right: Key.Right,
+  space: Key.Space,
+  enter: Key.Enter,
+  tab: Key.Tab,
+  esc: Key.Escape,
+  backspace: Key.Backspace,
+  shift: Key.LeftShift,
+  ctrl: Key.LeftControl,
+  alt: Key.LeftAlt
+};
+
+function toButton(target: MouseButton) {
   return target === "left" ? Button.LEFT : Button.RIGHT;
 }
 
-function toKey(target: MacroActionConfig["target"]) {
-  return Key[String(target).toUpperCase() as keyof typeof Key];
+function toKey(target: KeyboardTarget) {
+  return KEYBOARD_TARGET_TO_KEY[target];
+}
+
+function formatStepLabel(step: MacroStepConfig) {
+  const subject = step.kind === "keyboard"
+    ? `Keyboard ${step.targets.map((target) => String(target).toUpperCase()).join(step.mode === "chord" ? "+" : "->")}`
+    : step.targets.map((target) => target === "left" ? "Mouse Left" : "Mouse Right").join(step.mode === "chord" ? "+" : "->");
+
+  return step.behavior === "hold"
+    ? `${subject} Hold ${step.durationMs}ms`
+    : `${subject} ${step.mode === "chord" ? "Chord" : "Tap"}`;
 }
 
 export class MacroExecutor {
@@ -58,45 +125,104 @@ export class MacroExecutor {
   }
 
   private getActionLabel(action: MacroActionConfig) {
-    const subject = action.kind === "keyboard"
-      ? `Keyboard ${String(action.target).toUpperCase()}`
-      : action.target === "left"
-        ? "Mouse Left"
-        : "Mouse Right";
-
-    return action.behavior === "hold"
-      ? `${subject} Hold ${action.durationMs}ms`
-      : `${subject} Tap`;
+    if (action.steps.length === 1) {
+      return formatStepLabel(action.steps[0]);
+    }
+    return `Macro ${action.steps.length} Steps`;
   }
 
-  private async runAction(action: MacroActionConfig, token: number) {
-    if (action.kind === "keyboard") {
-      const key = toKey(action.target);
-      if (action.behavior === "hold") {
-        await keyboard.pressKey(key);
-        this.pressedKeys.add(key);
-        await this.abortableDelay(action.durationMs, token);
-        await keyboard.releaseKey(key);
-        this.pressedKeys.delete(key);
-        return `Held key ${String(action.target).toUpperCase()} for ${action.durationMs}ms`;
-      }
-
-      await keyboard.type(key);
-      return `Typed key ${String(action.target).toUpperCase()}`;
+  private async runKeyboardStep(target: KeyboardTarget, behavior: MacroStepConfig["behavior"], durationMs: number, token: number) {
+    const key = toKey(target);
+    if (behavior === "hold") {
+      await keyboard.pressKey(key);
+      this.pressedKeys.add(key);
+      await this.abortableDelay(durationMs, token);
+      await keyboard.releaseKey(key);
+      this.pressedKeys.delete(key);
+      return `Held key ${String(target).toUpperCase()} for ${durationMs}ms`;
     }
 
-    const button = toButton(action.target);
-    if (action.behavior === "hold") {
+    await keyboard.type(key);
+    return `Pressed key ${String(target).toUpperCase()}`;
+  }
+
+  private async runMouseStep(target: MouseButton, behavior: MacroStepConfig["behavior"], durationMs: number, token: number) {
+    const button = toButton(target);
+    if (behavior === "hold") {
       await mouse.pressButton(button);
       this.pressedButtons.add(button);
-      await this.abortableDelay(action.durationMs, token);
+      await this.abortableDelay(durationMs, token);
       await mouse.releaseButton(button);
       this.pressedButtons.delete(button);
-      return `Held ${String(action.target)} mouse button for ${action.durationMs}ms`;
+      return `Held ${String(target)} mouse button for ${durationMs}ms`;
     }
 
     await mouse.click(button);
-    return `Clicked ${String(action.target)} mouse button`;
+    return `Clicked ${String(target)} mouse button`;
+  }
+
+  private async runChordStep(step: MacroStepConfig, token: number) {
+    if (step.kind === "keyboard") {
+      const keys = step.targets.map((target) => toKey(target as KeyboardTarget));
+      for (const key of keys) {
+        await keyboard.pressKey(key);
+        this.pressedKeys.add(key);
+      }
+
+      await this.abortableDelay(step.behavior === "hold" ? step.durationMs : 30, token);
+
+      for (const key of [...keys].reverse()) {
+        await keyboard.releaseKey(key);
+        this.pressedKeys.delete(key);
+      }
+
+      return `${step.behavior === "hold" ? "Held" : "Pressed"} chord ${step.targets.map((target) => String(target).toUpperCase()).join("+")}`;
+    }
+
+    const buttons = step.targets.map((target) => toButton(target as MouseButton));
+    for (const button of buttons) {
+      await mouse.pressButton(button);
+      this.pressedButtons.add(button);
+    }
+
+    await this.abortableDelay(step.behavior === "hold" ? step.durationMs : 30, token);
+
+    for (const button of [...buttons].reverse()) {
+      await mouse.releaseButton(button);
+      this.pressedButtons.delete(button);
+    }
+
+    return `${step.behavior === "hold" ? "Held" : "Pressed"} mouse chord ${step.targets.join("+")}`;
+  }
+
+  private async runStep(step: MacroStepConfig, token: number) {
+    if (step.mode === "chord" && step.targets.length > 1) {
+      return this.runChordStep(step, token);
+    }
+
+    const details: string[] = [];
+    for (const target of step.targets) {
+      if (step.kind === "keyboard") {
+        details.push(await this.runKeyboardStep(target as KeyboardTarget, step.behavior, step.durationMs, token));
+      } else {
+        details.push(await this.runMouseStep(target as MouseButton, step.behavior, step.durationMs, token));
+      }
+    }
+
+    return details.join(" -> ");
+  }
+
+  private async runAction(action: MacroActionConfig, token: number) {
+    const details: string[] = [];
+
+    for (const step of action.steps) {
+      if (token !== this.stopToken) {
+        throw new Error("Macro interrupted by emergency stop");
+      }
+      details.push(await this.runStep(step, token));
+    }
+
+    return details.join(" -> ");
   }
 
   emergencyStop() {

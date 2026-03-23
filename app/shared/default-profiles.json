@@ -3,12 +3,17 @@
     "id": "minecraft",
     "name": "Minecraft",
     "rules": {
-      "U": { "kind": "keyboard", "target": "a", "behavior": "hold", "durationMs": 1000 },
-      "U'": { "kind": "keyboard", "target": "d", "behavior": "hold", "durationMs": 1000 },
-      "R": { "kind": "keyboard", "target": "w", "behavior": "hold", "durationMs": 1000 },
-      "R'": { "kind": "keyboard", "target": "s", "behavior": "hold", "durationMs": 1000 },
-      "D": { "kind": "keyboard", "target": "e", "behavior": "tap", "durationMs": 100 },
-      "F": { "kind": "mouse", "target": "left", "behavior": "tap", "durationMs": 100 }
+      "U": { "steps": [{ "kind": "keyboard", "target": "a", "behavior": "hold", "durationMs": 1000 }] },
+      "U'": { "steps": [{ "kind": "keyboard", "target": "d", "behavior": "hold", "durationMs": 1000 }] },
+      "R": { "steps": [{ "kind": "keyboard", "target": "w", "behavior": "hold", "durationMs": 1000 }] },
+      "R'": { "steps": [{ "kind": "keyboard", "target": "s", "behavior": "hold", "durationMs": 1000 }] },
+      "D": { "steps": [{ "kind": "keyboard", "target": "e", "behavior": "tap", "durationMs": 100 }] },
+      "F": {
+        "steps": [
+          { "kind": "mouse", "target": "left", "behavior": "tap", "durationMs": 100 },
+          { "kind": "keyboard", "target": "1", "behavior": "tap", "durationMs": 100 }
+        ]
+      }
     }
   }
 ]
