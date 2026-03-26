@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CubeGyroEvent } from "../shared/gyro.js";
+import type { BluetoothChooserDevice, BluetoothChooserState } from "../shared/bluetooth-picker.js";
 import { MacroExecutor } from "./macro/executor.js";
 import { GyroMouseController } from "./gyro/controller.js";
 import { ProfileStore } from "./profiles/store.js";
@@ -12,14 +13,19 @@ import type { MoveToken } from "../shared/move.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const GAN_NAME_HINTS = ["GAN", "MG", "AICUBE"];
 const TOGGLE_SHORTCUT = "CommandOrControl+Shift+F11";
 const EMERGENCY_STOP_SHORTCUT = "CommandOrControl+Shift+F12";
 
+interface PendingBluetoothChooser {
+  requestId: number;
+  callback: (deviceId: string) => void;
+  devices: BluetoothChooserDevice[];
+}
+
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
-let bluetoothSelectionTimeout: NodeJS.Timeout | null = null;
-let lastSeenBluetoothDeviceId: string | null = null;
+let pendingBluetoothChooser: PendingBluetoothChooser | null = null;
+let bluetoothChooserRequestId = 0;
 let profileConfig: ProfileConfig = createDefaultProfileConfig();
 let emergencyStopCount = 0;
 let isQuitting = false;
@@ -64,11 +70,6 @@ function getActiveProfile() {
   return profileConfig.profiles.find((profile) => profile.id === profileConfig.activeProfileId) ?? profileConfig.profiles[0] ?? null;
 }
 
-function isGanLikeDeviceName(name?: string) {
-  const normalized = (name ?? "").trim().toUpperCase();
-  return GAN_NAME_HINTS.some((hint) => normalized.startsWith(hint) || normalized.includes(hint));
-}
-
 function getRuntimeState(): RuntimeState {
   return {
     enabled: profileConfig.enabled,
@@ -84,6 +85,34 @@ function getRuntimeState(): RuntimeState {
 
 function createTrayImage() {
   return nativeImage.createFromPath(resolveAppIconPath());
+}
+
+function emitBluetoothChooserState(state: BluetoothChooserState) {
+  if (!mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) {
+    return;
+  }
+
+  mainWindow.webContents.send("bluetooth:chooser-state", state);
+}
+
+function closeBluetoothChooser(requestId: number) {
+  emitBluetoothChooserState({
+    visible: false,
+    requestId,
+    devices: []
+  });
+}
+
+function finishBluetoothChooser(deviceId: string) {
+  if (!pendingBluetoothChooser) {
+    return false;
+  }
+
+  const { callback, requestId } = pendingBluetoothChooser;
+  pendingBluetoothChooser = null;
+  callback(deviceId);
+  closeBluetoothChooser(requestId);
+  return true;
 }
 
 function updateTrayMenu() {
@@ -160,27 +189,30 @@ function createMainWindow() {
   mainWindow.webContents.on("select-bluetooth-device", (event, deviceList, callback) => {
     event.preventDefault();
 
-    if (bluetoothSelectionTimeout) {
-      clearTimeout(bluetoothSelectionTimeout);
-      bluetoothSelectionTimeout = null;
+    const devices = deviceList.map((device) => ({
+      deviceId: device.deviceId,
+      deviceName: device.deviceName || "未命名蓝牙设备"
+    }));
+
+    if (!pendingBluetoothChooser) {
+      pendingBluetoothChooser = {
+        requestId: ++bluetoothChooserRequestId,
+        callback,
+        devices
+      };
+    } else {
+      pendingBluetoothChooser = {
+        ...pendingBluetoothChooser,
+        callback,
+        devices
+      };
     }
 
-    const matchedDevice = deviceList.find((device) => isGanLikeDeviceName(device.deviceName));
-    if (matchedDevice) {
-      lastSeenBluetoothDeviceId = matchedDevice.deviceId;
-      callback(matchedDevice.deviceId);
-      return;
-    }
-
-    if (deviceList.length > 0) {
-      lastSeenBluetoothDeviceId = deviceList[0].deviceId;
-    }
-
-    bluetoothSelectionTimeout = setTimeout(() => {
-      callback(lastSeenBluetoothDeviceId ?? "");
-      bluetoothSelectionTimeout = null;
-      lastSeenBluetoothDeviceId = null;
-    }, 15000);
+    emitBluetoothChooserState({
+      visible: true,
+      requestId: pendingBluetoothChooser.requestId,
+      devices: pendingBluetoothChooser.devices
+    });
   });
 
   mainWindow.webContents.session.setBluetoothPairingHandler((details, callback) => {
@@ -209,11 +241,7 @@ function createMainWindow() {
   mainWindow.on("show", () => updateTrayMenu());
   mainWindow.on("hide", () => updateTrayMenu());
   mainWindow.on("closed", () => {
-    if (bluetoothSelectionTimeout) {
-      clearTimeout(bluetoothSelectionTimeout);
-      bluetoothSelectionTimeout = null;
-    }
-    lastSeenBluetoothDeviceId = null;
+    finishBluetoothChooser("");
     mainWindow = null;
   });
 }
@@ -235,6 +263,26 @@ ipcMain.handle("profiles:save", async (_event, nextConfig: ProfileConfig) => {
 ipcMain.handle("runtime:get-state", async () => getRuntimeState());
 ipcMain.handle("runtime:toggle-enabled", async () => toggleEnabled());
 ipcMain.handle("runtime:emergency-stop", async () => emergencyStop());
+ipcMain.handle("app:get-version", async () => app.getVersion());
+ipcMain.handle("bluetooth:select-device", async (_event, payload: { requestId: number; deviceId: string }) => {
+  if (!pendingBluetoothChooser || pendingBluetoothChooser.requestId !== payload.requestId) {
+    return false;
+  }
+
+  const matchedDevice = pendingBluetoothChooser.devices.find((device) => device.deviceId === payload.deviceId);
+  if (!matchedDevice) {
+    return false;
+  }
+
+  return finishBluetoothChooser(matchedDevice.deviceId);
+});
+ipcMain.handle("bluetooth:cancel-chooser", async (_event, requestId: number) => {
+  if (!pendingBluetoothChooser || pendingBluetoothChooser.requestId !== requestId) {
+    return false;
+  }
+
+  return finishBluetoothChooser("");
+});
 ipcMain.on("gyro:event", (_event, nextEvent: CubeGyroEvent) => {
   gyroMouseController.handleGyroEvent(nextEvent);
 });
@@ -264,6 +312,7 @@ ipcMain.handle("macro:execute-for-move", async (_event, move: MoveToken) => {
 configurePortableUserDataPath();
 
 app.whenReady().then(async () => {
+  Menu.setApplicationMenu(null);
   profileConfig = await getProfileStore().load();
   gyroMouseController.setConfig(profileConfig.gyroMouse);
   gyroMouseController.setSystemEnabled(profileConfig.enabled);

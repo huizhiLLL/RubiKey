@@ -6,9 +6,11 @@ import type { MoveToken } from "../shared/move.js";
 import type { CubeGyroEvent } from "../shared/gyro.js";
 
 contextBridge.exposeInMainWorld("rubikey", {
-  version: "0.1.1",
   executeActionForMove(move: MoveToken) {
     return ipcRenderer.invoke("macro:execute-for-move", move) as Promise<MacroExecutionResult | null>;
+  },
+  getVersion() {
+    return ipcRenderer.invoke("app:get-version") as Promise<string>;
   },
   loadProfileConfig() {
     return ipcRenderer.invoke("profiles:load") as Promise<ProfileConfig>;

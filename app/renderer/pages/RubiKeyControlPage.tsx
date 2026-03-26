@@ -8,7 +8,6 @@ import {
   describeMacroStep,
   type ActionBehavior,
   type ActionKind,
-  type KeyboardTarget,
   type MacroActionConfig,
   type MacroStepConfig,
   type StepExecutionMode
@@ -17,38 +16,49 @@ import {
   createBlankProfile,
   createDefaultProfileConfig,
   getBoundMoves,
-  getUnboundMoves,
   type ProfileConfig
 } from "@shared/profiles";
 import {
+  EXPERIMENTAL_GAME_MODE_ENABLED,
   createGyroBasis,
   createIdleGyroPreviewState,
   evaluateGyroMouse,
   type CubeGyroEvent
 } from "@shared/gyro";
+import type { BluetoothChooserState } from "@shared/bluetooth-picker";
 import type { RuntimeState } from "@shared/runtime";
-import { ALL_MOVES, type CubeMoveEvent, type MoveToken } from "@shared/move";
+import { ALL_MOVES, type MoveToken } from "@shared/move";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Activity, BookOpenText, CircleHelp, Compass, House, Info, Palette, PanelLeftClose, PanelLeftOpen, Plus, Save, Sparkles, Trash2, Bluetooth, Play, Square, AlertOctagon, RefreshCw, MousePointer2, Settings2, Inbox, Ghost } from "lucide-react";
+import { Activity, BookOpenText, CircleHelp, Compass, House, Info, Palette, PanelLeftClose, PanelLeftOpen, Plus, Save, Trash2, Bluetooth, Play, Square, AlertOctagon, RefreshCw, MousePointer2, Settings2, Inbox, Ghost } from "lucide-react";
 import { createSmartCubeConnector, type CubeDebugEntry } from "../../cube";
 import { getRememberedMac, saveMacInputValue } from "../../cube/core/mac";
 import appIconUrl from "../../../assets/favicon.svg";
 
 type ConnectionStatus = "disconnected" | "connecting" | "connected" | "error";
-type ViewKey = "home" | "profiles" | "moves" | "actions" | "diagnostics" | "about";
+type ViewKey = "home" | "profiles" | "moves" | "diagnostics" | "about";
 type ThemeKey = "blossom" | "mist";
+
+interface ActionLogEntry {
+  label: string;
+  timestamp: number;
+  detail: string | null;
+}
 
 const NAV_ITEMS: Array<{ key: ViewKey; label: string; hint: string; icon: ReactNode }> =[
   { key: "home", label: "仪表盘", hint: "", icon: <House size={18} strokeWidth={1.9} /> },
   { key: "profiles", label: "方案映射", hint: "", icon: <BookOpenText size={18} strokeWidth={1.9} /> },
-  { key: "moves", label: "最近转动", hint: "", icon: <Compass size={18} strokeWidth={1.9} /> },
-  { key: "actions", label: "执行回响", hint: "", icon: <Sparkles size={18} strokeWidth={1.9} /> },
+  { key: "moves", label: "动作日志", hint: "", icon: <Compass size={18} strokeWidth={1.9} /> },
   { key: "diagnostics", label: "连接诊断", hint: "", icon: <Activity size={18} strokeWidth={1.9} /> },
   { key: "about", label: "关于", hint: "", icon: <Info size={18} strokeWidth={1.9} /> }
 ];
 
 const REPOSITORY_URL = "https://github.com/huizhiLLL/RubiKey";
 const THEME_STORAGE_KEY = "rubikey.theme";
+const EMPTY_BLUETOOTH_CHOOSER_STATE: BluetoothChooserState = {
+  visible: false,
+  requestId: 0,
+  devices: []
+};
 
 function formatTime(timestamp: number) {
   return new Date(timestamp).toLocaleTimeString("zh-CN", {
@@ -66,51 +76,28 @@ function getStatusLabel(status: ConnectionStatus) {
   return "未连接";
 }
 
-function formatRuleShort(move: string, action: MacroActionConfig | null) {
-  return action ? `${move}->${describeAction(action)}` : `${move}->未绑定`;
+function getGyroModeLabel(mode: "desktop" | "game") {
+  if (!EXPERIMENTAL_GAME_MODE_ENABLED) {
+    return "桌面";
+  }
+
+  return mode === "game" ? "游戏" : "桌面";
 }
 
-function keyboardEventToTarget(event: KeyboardEvent): KeyboardTarget | null {
-  if (/^Key[A-Z]$/.test(event.code)) {
-    return event.code.slice(3).toLowerCase() as KeyboardTarget;
+function normalizeConnectError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return "连接智能魔方设备失败";
   }
 
-  if (/^Digit[0-9]$/.test(event.code)) {
-    return event.code.slice(5) as KeyboardTarget;
+  if (error.message === "User cancelled the requestDevice() chooser.") {
+    return "已取消蓝牙设备选择";
   }
 
-  switch (event.code) {
-    case "ArrowUp":
-      return "up";
-    case "ArrowDown":
-      return "down";
-    case "ArrowLeft":
-      return "left";
-    case "ArrowRight":
-      return "right";
-    case "Space":
-      return "space";
-    case "Enter":
-    case "NumpadEnter":
-      return "enter";
-    case "Tab":
-      return "tab";
-    case "Escape":
-      return "esc";
-    case "Backspace":
-      return "backspace";
-    case "ShiftLeft":
-    case "ShiftRight":
-      return "shift";
-    case "ControlLeft":
-    case "ControlRight":
-      return "ctrl";
-    case "AltLeft":
-    case "AltRight":
-      return "alt";
-    default:
-      return null;
-  }
+  return error.message;
+}
+
+function formatRuleShort(move: string, action: MacroActionConfig | null) {
+  return action ? `${move}->${describeAction(action)}` : `${move}->未绑定`;
 }
 
 function getDiagnosticsSummary(status: ConnectionStatus, errorText: string, debugCount: number) {
@@ -173,6 +160,11 @@ function getTargetOptions(step: MacroStepConfig) {
   return step.kind === "mouse" ? MOUSE_OPTIONS : KEYBOARD_OPTIONS;
 }
 
+function getNextAvailableTarget(step: MacroStepConfig) {
+  const usedTargets = new Set(step.targets);
+  return getTargetOptions(step).find((option) => !usedTargets.has(option.value))?.value ?? null;
+}
+
 function getRubikeyApi() {
   if (!window.rubikey) {
     throw new Error("RubiKey preload API 未注入，请彻底退出后重新打开应用，或重新打包 portable 版本");
@@ -180,6 +172,9 @@ function getRubikeyApi() {
 
   return {
     ...window.rubikey,
+    onBluetoothChooserStateChange: window.rubikey.onBluetoothChooserStateChange ?? (() => () => undefined),
+    chooseBluetoothDevice: window.rubikey.chooseBluetoothDevice ?? (() => Promise.resolve(false)),
+    cancelBluetoothChooser: window.rubikey.cancelBluetoothChooser ?? (() => Promise.resolve(false)),
     pushGyroEvent: window.rubikey.pushGyroEvent ?? (() => undefined),
     setGyroSupported: window.rubikey.setGyroSupported ?? (() => undefined),
     clearGyroDevice: window.rubikey.clearGyroDevice ?? (() => undefined),
@@ -187,14 +182,11 @@ function getRubikeyApi() {
   };
 }
 
-export function CubeDebugPage() {
+export function RubiKeyControlPage() {
   const driverRef = useRef<ReturnType<typeof createSmartCubeConnector> | null>(null);
   const mappingEnabledRef = useRef(false);
   const hasLoadedProfilesRef = useRef(false);
   const saveTimerRef = useRef<number | null>(null);
-  const recordingBaselineRef = useRef<MacroActionConfig | null>(null);
-  const recordingActiveKeysRef = useRef<Set<KeyboardTarget>>(new Set());
-  const recordingChordRef = useRef<Set<KeyboardTarget>>(new Set());
   const gyroConfigRef = useRef(createDefaultProfileConfig().gyroMouse);
   const gyroBasisRef = useRef<ReturnType<typeof createGyroBasis> | null>(null);
   const gyroPreviewRef = useRef(createIdleGyroPreviewState());
@@ -218,25 +210,23 @@ export function CubeDebugPage() {
   const[profileConfig, setProfileConfig] = useState<ProfileConfig>(createDefaultProfileConfig());
   const[runtimeState, setRuntimeState] = useState<RuntimeState | null>(null);
   const[saveState, setSaveState] = useState<string>("正在读取配置");
-  const [moveLogs, setMoveLogs] = useState<CubeMoveEvent[]>([]);
+  const [actionLogs, setActionLogs] = useState<ActionLogEntry[]>([]);
   const [debugLogs, setDebugLogs] = useState<CubeDebugEntry[]>([]);
-  const [executionHints, setExecutionHints] = useState<string[]>([]);
-  const[pendingMove, setPendingMove] = useState<MoveToken | "">("");
-  const [recordingMove, setRecordingMove] = useState<MoveToken | null>(null);
-  const [recordingHint, setRecordingHint] = useState<string>("");
+  const [selectedEditorMove, setSelectedEditorMove] = useState<MoveToken>(ALL_MOVES[0]);
   const [isMacHelpOpen, setIsMacHelpOpen] = useState(false);
+  const [bluetoothChooser, setBluetoothChooser] = useState<BluetoothChooserState>(EMPTY_BLUETOOTH_CHOOSER_STATE);
+  const [appVersion, setAppVersion] = useState<string>("读取中...");
 
   const canUseBluetooth = useMemo(
     () => typeof navigator !== "undefined" && "bluetooth" in navigator,[]
   );
-  const appVersion = useMemo(() => window.rubikey?.version ?? "unknown",[]);
 
   const activeProfile = useMemo(
     () => profileConfig.profiles.find((profile) => profile.id === profileConfig.activeProfileId) ?? profileConfig.profiles[0] ?? null,[profileConfig]
   );
 
   const boundMoves = useMemo(() => (activeProfile ? getBoundMoves(activeProfile) : []), [activeProfile]);
-  const availableMoves = useMemo(() => (activeProfile ? getUnboundMoves(activeProfile) : []), [activeProfile]);
+  const selectedAction = activeProfile?.rules[selectedEditorMove] ?? null;
 
   useEffect(() => {
     mappingEnabledRef.current = runtimeState?.enabled ?? true;
@@ -285,13 +275,20 @@ export function CubeDebugPage() {
   }, [isMacHelpOpen]);
 
   useEffect(() => {
-    if (!pendingMove && availableMoves.length > 0) {
-      setPendingMove(availableMoves[0]);
-    }
-    if (pendingMove && !availableMoves.includes(pendingMove)) {
-      setPendingMove(availableMoves[0] ?? "");
-    }
-  },[availableMoves, pendingMove]);
+    const dispose = getRubikeyApi().onBluetoothChooserStateChange((nextState) => {
+      setBluetoothChooser(nextState);
+    });
+
+    return () => {
+      dispose();
+    };
+  }, []);
+
+  useEffect(() => {
+    void getRubikeyApi().getVersion()
+      .then((version) => setAppVersion(version))
+      .catch(() => setAppVersion("unknown"));
+  }, []);
 
   useEffect(() => {
     void (async () => {
@@ -333,17 +330,29 @@ export function CubeDebugPage() {
   useEffect(() => {
     const driver = createSmartCubeConnector();
     driver.setMoveListener((event) => {
-      setMoveLogs((prev) => [event, ...prev].slice(0, 24));
-      if (mappingEnabledRef.current) {
-        void getRubikeyApi().executeActionForMove(event.move).then((result) => {
-          if (result) {
-            setExecutionHints((prev) =>[
-              `${formatTime(result.timestamp)} · ${event.move} -> ${result.detail}`,
-              ...prev
-            ].slice(0, 18));
-          }
-        });
-      }
+      void (async () => {
+        const result = mappingEnabledRef.current
+          ? await getRubikeyApi().executeActionForMove(event.move)
+          : null;
+
+        setActionLogs((prev) => [
+          {
+            label: event.move,
+            timestamp: result?.timestamp ?? event.localTimestamp,
+            detail: result?.detail ?? null
+          },
+          ...prev
+        ].slice(0, 24));
+      })().catch(() => {
+        setActionLogs((prev) => [
+          {
+            label: event.move,
+            timestamp: event.localTimestamp,
+            detail: null
+          },
+          ...prev
+        ].slice(0, 24));
+      });
     });
     driver.setGyroListener((event: CubeGyroEvent) => {
       getRubikeyApi().pushGyroEvent(event);
@@ -389,70 +398,6 @@ export function CubeDebugPage() {
   },[]);
 
   useEffect(() => {
-    if (!recordingMove) {
-      recordingActiveKeysRef.current.clear();
-      recordingChordRef.current.clear();
-      return;
-    }
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      const target = keyboardEventToTarget(event);
-      if (!target || event.repeat) {
-        return;
-      }
-
-      event.preventDefault();
-      event.stopPropagation();
-
-      if (!recordingActiveKeysRef.current.has(target)) {
-        recordingActiveKeysRef.current.add(target);
-        recordingChordRef.current.add(target);
-        setRecordingHint(`录制中：${Array.from(recordingChordRef.current).join(" + ")}`);
-      }
-    };
-
-    const handleKeyUp = (event: KeyboardEvent) => {
-      const target = keyboardEventToTarget(event);
-      if (!target) {
-        return;
-      }
-
-      event.preventDefault();
-      event.stopPropagation();
-      recordingActiveKeysRef.current.delete(target);
-
-      if (recordingActiveKeysRef.current.size === 0 && recordingChordRef.current.size > 0) {
-        const targets = Array.from(recordingChordRef.current);
-        patchConfig((draft) => {
-          const action = draft.profiles
-            .find((profile) => profile.id === draft.activeProfileId)
-            ?.rules[recordingMove];
-          if (!action) {
-            return;
-          }
-          action.steps.push({
-            kind: "keyboard",
-            targets,
-            behavior: "tap",
-            mode: targets.length > 1 ? "chord" : "sequence",
-            durationMs: 100
-          });
-        });
-        recordingChordRef.current.clear();
-        setRecordingHint(`已录制：${targets.join(" + ")}`);
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("keyup", handleKeyUp);
-
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("keyup", handleKeyUp);
-    };
-  }, [recordingMove]);
-
-  useEffect(() => {
     const driver = driverRef.current;
     if (!driver || status !== "connected") {
       return;
@@ -493,8 +438,24 @@ export function CubeDebugPage() {
     } catch (error) {
       console.error(error);
       setStatus("error");
-      setErrorText(error instanceof Error ? error.message : "连接智能魔方设备失败");
+      setErrorText(normalizeConnectError(error));
     }
+  }
+
+  async function handleBluetoothChooserCancel() {
+    if (!bluetoothChooser.visible) {
+      return;
+    }
+
+    await getRubikeyApi().cancelBluetoothChooser(bluetoothChooser.requestId);
+  }
+
+  async function handleBluetoothDeviceSelect(deviceId: string) {
+    if (!bluetoothChooser.visible) {
+      return;
+    }
+
+    await getRubikeyApi().chooseBluetoothDevice(bluetoothChooser.requestId, deviceId);
   }
 
   async function handleDisconnect() {
@@ -535,10 +496,14 @@ export function CubeDebugPage() {
 
   async function triggerEmergencyStop() {
     const result = await getRubikeyApi().emergencyStop();
-    setExecutionHints((prev) =>[
-      `${formatTime(result.timestamp)} · 急停 -> ${result.detail}`,
+    setActionLogs((prev) => [
+      {
+        label: "急停",
+        timestamp: result.timestamp,
+        detail: result.detail
+      },
       ...prev
-    ].slice(0, 18));
+    ].slice(0, 24));
     const runtime = await getRubikeyApi().getRuntimeState();
     setRuntimeState(runtime);
   }
@@ -583,12 +548,12 @@ export function CubeDebugPage() {
     });
   }
 
-  function addBinding() {
-    if (!activeProfile || !pendingMove) return;
+  function addBinding(move: MoveToken) {
+    if (!activeProfile) return;
     patchConfig((draft) => {
       const profile = draft.profiles.find((item) => item.id === draft.activeProfileId);
-      if (!profile || profile.rules[pendingMove]) return;
-      profile.rules[pendingMove] = createDefaultKeyboardAction("a");
+      if (!profile || profile.rules[move]) return;
+      profile.rules[move] = createDefaultKeyboardAction("a");
       profile.updatedAt = Date.now();
     });
   }
@@ -621,8 +586,9 @@ export function CubeDebugPage() {
       const action = profile?.rules[move];
       const step = action?.steps[stepIndex];
       if (!profile || !action || !step) return;
-      step.targets.push(step.kind === "keyboard" ? "a" : "left");
-      step.targets = Array.from(new Set(step.targets));
+      const nextTarget = getNextAvailableTarget(step);
+      if (!nextTarget) return;
+      step.targets.push(nextTarget);
       profile.updatedAt = Date.now();
     });
   }
@@ -673,7 +639,7 @@ export function CubeDebugPage() {
       const action = profile?.rules[move];
       const step = action?.steps[stepIndex];
       if (!profile || !action || !step) return;
-      step.targets[targetIndex] = target as KeyboardTarget;
+      step.targets[targetIndex] = target as typeof step.targets[number];
       step.targets = Array.from(new Set(step.targets));
       profile.updatedAt = Date.now();
     });
@@ -701,49 +667,6 @@ export function CubeDebugPage() {
       step.mode = mode === "chord" ? "chord" : "sequence";
       profile.updatedAt = Date.now();
     });
-  }
-
-  function startMacroRecording(move: MoveToken) {
-    if (!activeProfile) return;
-    recordingBaselineRef.current = activeProfile.rules[move]
-      ? {
-          steps: activeProfile.rules[move]!.steps.map((step) => ({ ...step, targets: [...step.targets] }))
-        }
-      : null;
-
-    patchConfig((draft) => {
-      const profile = draft.profiles.find((item) => item.id === draft.activeProfileId);
-      if (!profile) return;
-      profile.rules[move] = { steps: [] };
-      profile.updatedAt = Date.now();
-    });
-
-    setRecordingMove(move);
-    setRecordingHint("录制中：请在当前窗口按下要触发的键或组合键");
-  }
-
-  function stopMacroRecording(save: boolean) {
-    const move = recordingMove;
-    if (!move) return;
-
-    if (!save) {
-      patchConfig((draft) => {
-        const profile = draft.profiles.find((item) => item.id === draft.activeProfileId);
-        if (!profile) return;
-        profile.rules[move] = recordingBaselineRef.current
-          ? {
-              steps: recordingBaselineRef.current.steps.map((step) => ({ ...step, targets: [...step.targets] }))
-            }
-          : null;
-        profile.updatedAt = Date.now();
-      });
-    }
-
-    recordingActiveKeysRef.current.clear();
-    recordingChordRef.current.clear();
-    recordingBaselineRef.current = null;
-    setRecordingMove(null);
-    setRecordingHint("");
   }
 
   function updateRuleDuration(move: MoveToken, stepIndex: number, durationValue: string) {
@@ -962,34 +885,40 @@ export function CubeDebugPage() {
           {profileConfig.gyroMouse.enabled && (
             <div className="gyro-settings-container">
               <div className="gyro-preview-bar">
-                <div className="preview-item"><span>支持状态:</span> <strong>{gyroSupported ? "支持" : "未检测到"}</strong></div>
-                <div className="preview-item"><span>设备 Gyro:</span> <strong>{gyroDeviceEnabled ? "开启" : "关闭"}</strong></div>
-                <div className="preview-item"><span>模式:</span> <strong>{profileConfig.gyroMouse.mode === "game" ? "游戏" : "桌面"}</strong></div>
-                <div className="preview-item"><span>Pitch (上下):</span> <strong>{gyroPreview.pitchDeg.toFixed(1)}°</strong></div>
-                <div className="preview-item"><span>Roll (左右):</span> <strong>{gyroPreview.rollDeg.toFixed(1)}°</strong></div>
+                <div className="preview-item"><span>状态:</span> <strong>{gyroSupported ? "支持" : "未检测到"}</strong></div>
+                <div className="preview-item"><span>Gyro:</span> <strong>{gyroDeviceEnabled ? "开启" : "关闭"}</strong></div>
+                <div className="preview-item"><span>上下:</span> <strong>{gyroPreview.pitchDeg.toFixed(1)}°</strong></div>
+                <div className="preview-item"><span>左右:</span> <strong>{gyroPreview.rollDeg.toFixed(1)}°</strong></div>
               </div>
 
               <div className="settings-grid">
                 <div className="setting-group">
                   <h4>控制模式</h4>
-                  <div className="input-row">
-                    <label>
-                      模式
-                      <select className="select-field" value={profileConfig.gyroMouse.mode} onChange={(e) => updateGyroMode(e.target.value)}>
-                        <option value="desktop">桌面模式</option>
-                        <option value="game">游戏模式</option>
-                      </select>
-                    </label>
-                  </div>
-                  <p className="text-sm mt-sm text-secondary">
-                    {profileConfig.gyroMouse.mode === "game"
-                      ? "游戏模式会把位移拆成更慢的脉冲输入，更适合 Minecraft 这类第一人称视角"
+                  {EXPERIMENTAL_GAME_MODE_ENABLED ? (
+                    <div className="input-row">
+                      <label>
+                        模式
+                        <select className="select-field" value={profileConfig.gyroMouse.mode} onChange={(e) => updateGyroMode(e.target.value)}>
+                          <option value="desktop">桌面模式</option>
+                          <option value="game">游戏模式</option>
+                        </select>
+                      </label>
+                    </div>
+                  ) : (
+                    <div className="gyro-mode-locked">
+                      <span className="info-value">桌面模式</span>
+                      <span className="text-sm text-secondary">并不适用于某些游戏内的视角转动，仅鼠标移动</span>
+                    </div>
+                  )}
+                  {/* <p className="text-sm mt-sm text-secondary">
+                    {EXPERIMENTAL_GAME_MODE_ENABLED && profileConfig.gyroMouse.mode === "game"
+                      ? "游戏模式会把倾角映射成连续视角速度，并加入轻微平滑，更适合第一人称视角控制"
                       : "桌面模式保持连续鼠标位移，更适合常规桌面指针控制"}
-                  </p>
+                  </p> */}
                 </div>
 
                 <div className="setting-group">
-                  <h4>死区阈值 (°)</h4>
+                  <h4>静止阈值 (°)</h4>
                   <div className="input-row">
                     <label>上下<input type="number" min={4} max={75} value={profileConfig.gyroMouse.deadzonePitchDeg} onChange={(e) => updateGyroNumber("deadzonePitchDeg", e.target.value)} /></label>
                     <label>左右<input type="number" min={4} max={75} value={profileConfig.gyroMouse.deadzoneRollDeg} onChange={(e) => updateGyroNumber("deadzoneRollDeg", e.target.value)} /></label>
@@ -1093,162 +1022,190 @@ export function CubeDebugPage() {
               </button>
             </div>
 
-            <div className="add-rule-bar">
-              <span className="add-label">新增映射：</span>
-              <select className="select-field" value={pendingMove} onChange={(event) => setPendingMove(event.target.value as MoveToken | "")}>
-                {availableMoves.length === 0 ? <option value="">已无可用转动</option> : availableMoves.map((move) => (
-                  <option key={move} value={move}>{move}</option>
-                ))}
-              </select>
-              <button className="btn-primary" onClick={addBinding} disabled={!pendingMove}>
-                <Plus size={14} />
-              </button>
-            </div>
-
-            <div className="rules-list">
-              {boundMoves.length === 0 ? (
-                <div className="empty-state-box">
-                  <Ghost strokeWidth={1.5} />
-                  <span>当前方案没有任何规则，请从上方添加</span>
-                </div>
-              ) : boundMoves.map((move) => {
-                const action = activeProfile.rules[move];
-                return (
-                  <div className="rule-card" key={move}>
-                    <div className="rule-trigger">
-                      <div className="move-badge">{move}</div>
-                      <span className="arrow">➔</span>
-                    </div>
-
-                    <div className="rule-body">
-                      <div className="rule-summary-line">
-                        <span className="rule-summary-text">{describeAction(action)}</span>
-                        <div className="button-group wrap">
-                          {recordingMove === move ? (
-                            <>
-                              <button className="btn-primary step-add-btn" onClick={() => stopMacroRecording(true)}>
-                                停止并保存
-                              </button>
-                              <button className="btn-ghost step-add-btn" onClick={() => stopMacroRecording(false)}>
-                                取消录制
-                              </button>
-                            </>
-                          ) : (
-                            <>
-                              <button className="btn-ghost step-add-btn" onClick={() => addRuleStep(move)}>
-                                <Plus size={14} /> 添加步骤
-                              </button>
-                              <button className="btn-ghost step-add-btn" onClick={() => startMacroRecording(move)}>
-                                录制键盘宏
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </div>
-
-                      {recordingMove === move ? (
-                        <div className="step-desc" style={{ marginBottom: 8 }}>
-                          {recordingHint}
-                        </div>
-                      ) : null}
-
-                      <div className="macro-steps">
-                        {action?.steps.map((step, stepIndex) => {
-                          const targetOptions = getTargetOptions(step);
-                          return (
-                            <div className="macro-step-row" key={`${move}-step-${stepIndex}`}>
-                              <span className="step-index">步骤 {stepIndex + 1}</span>
-
-                              <div className="rule-config-row">
-                                <select
-                                  className="select-field small"
-                                  value={step.kind}
-                                  onChange={(event) => updateRuleKind(move, stepIndex, event.target.value)}
-                                >
-                                  <option value="keyboard">键盘</option>
-                                  <option value="mouse">鼠标</option>
-                                </select>
-
-                                <select
-                                  className="select-field small"
-                                  value={step.mode}
-                                  onChange={(event) => updateRuleMode(move, stepIndex, event.target.value as StepExecutionMode)}
-                                >
-                                  <option value="sequence">顺序</option>
-                                  <option value="chord">同时</option>
-                                </select>
-
-                                {step.targets.map((target, targetIndex) => (
-                                  <div key={`${move}-step-${stepIndex}-target-${targetIndex}`} className="rule-config-row" style={{ gap: 8 }}>
-                                    <select
-                                      className="select-field small"
-                                      value={target}
-                                      onChange={(event) => updateRuleTarget(move, stepIndex, targetIndex, event.target.value)}
-                                    >
-                                      {targetOptions.map((option) => (
-                                        <option key={`${step.kind}-${String(option.value)}`} value={option.value}>{option.label}</option>
-                                      ))}
-                                    </select>
-                                    <button
-                                      className="btn-ghost icon-only delete-btn"
-                                      title="移除此目标"
-                                      onClick={() => removeStepTarget(move, stepIndex, targetIndex)}
-                                      disabled={step.targets.length <= 1}
-                                    >
-                                      <Trash2 size={14} />
-                                    </button>
-                                  </div>
-                                ))}
-
-                                <button className="btn-ghost step-add-btn" onClick={() => addStepTarget(move, stepIndex)}>
-                                  <Plus size={14} /> 添加目标
-                                </button>
-
-                                <select
-                                  className="select-field small"
-                                  value={step.behavior}
-                                  onChange={(event) => updateRuleBehavior(move, stepIndex, event.target.value)}
-                                >
-                                  {ACTION_BEHAVIORS.map((behavior) => (
-                                    <option key={behavior} value={behavior}>{behavior === "tap" ? "单击 (Tap)" : "按住 (Hold)"}</option>
-                                  ))}
-                                </select>
-
-                                <div className={`duration-wrapper ${step.behavior !== "hold" ? "disabled" : ""}`}>
-                                  <input
-                                    className="input-field small duration-input"
-                                    type="number" min={10} step={10}
-                                    value={step.durationMs}
-                                    onChange={(event) => updateRuleDuration(move, stepIndex, event.target.value)}
-                                    disabled={step.behavior !== "hold"}
-                                  />
-                                  <span className="unit">ms</span>
-                                </div>
-                              </div>
-
-                              <div className="step-actions">
-                                <span className="step-desc">{describeMacroStep(step)}</span>
-                                <button
-                                  className="btn-ghost icon-only delete-btn"
-                                  title="移除此步骤"
-                                  onClick={() => removeRuleStep(move, stepIndex)}
-                                  disabled={(action?.steps.length ?? 0) <= 1}
-                                >
-                                  <Trash2 size={16} />
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    <button className="btn-ghost icon-only delete-btn" title="移除该映射" onClick={() => removeBinding(move)}>
-                      <Trash2 size={16} />
-                    </button>
+            <div className="mapping-workspace">
+              <section className="mapping-browser">
+                <div className="mapping-browser-header">
+                  <div>
+                    <h3>选择转动</h3>
+                    <p>先点一个转动，再在右侧配置它要触发的动作</p>
                   </div>
-                );
-              })}
+                  <span className="mapping-browser-count">{boundMoves.length}/{ALL_MOVES.length} 已配置</span>
+                </div>
+
+                <div className="move-selector-grid">
+                  {ALL_MOVES.map((move) => {
+                    const action = activeProfile.rules[move];
+                    const configured = Boolean(action);
+                    return (
+                      <button
+                        key={move}
+                        type="button"
+                        className={`move-selector-card ${selectedEditorMove === move ? "active" : ""} ${configured ? "configured" : "empty"}`}
+                        onClick={() => setSelectedEditorMove(move)}
+                      >
+                        <div className="move-selector-top">
+                          <span className="move-badge">{move}</span>
+                          <span className={`move-status ${configured ? "configured" : "empty"}`}>
+                            {configured ? "已配置" : "未配置"}
+                          </span>
+                        </div>
+                        <span className="move-selector-summary">
+                          {configured ? describeAction(action) : "点击开始配置这个转动"}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+
+              <section className="mapping-detail-panel">
+                <div className="mapping-detail-header">
+                  <div>
+                    <div className="mapping-detail-kicker">当前编辑</div>
+                    <h3>{selectedEditorMove}</h3>
+                    <p>
+                      {selectedAction
+                        ? describeAction(selectedAction)
+                        : "这个转动还没有绑定动作，创建后就可以开始编辑"}
+                    </p>
+                  </div>
+                  <div className="button-group wrap">
+                    {selectedAction ? (
+                      <>
+                        <button className="btn-ghost" onClick={() => addRuleStep(selectedEditorMove)}>
+                          <Plus size={14} /> 添加步骤
+                        </button>
+                        <button className="btn-danger" onClick={() => removeBinding(selectedEditorMove)}>
+                          <Trash2 size={14} /> 清空映射
+                        </button>
+                      </>
+                    ) : (
+                      <button className="btn-primary" onClick={() => addBinding(selectedEditorMove)}>
+                        <Plus size={14} /> 为 {selectedEditorMove} 创建映射
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {!selectedAction ? (
+                  <div className="mapping-empty-state">
+                    <Ghost strokeWidth={1.5} />
+                    <strong>{selectedEditorMove} 还没有绑定动作</strong>
+                    <span>创建后可以选择键盘或鼠标，并按步骤组合成一个动作。</span>
+                  </div>
+                ) : (
+                  <div className="macro-steps elevated">
+                    {selectedAction.steps.map((step, stepIndex) => {
+                      const targetOptions = getTargetOptions(step);
+                      return (
+                        <div className="macro-step-row focused" key={`${selectedEditorMove}-step-${stepIndex}`}>
+                          <div className="step-card-header">
+                            <div className="step-card-title">
+                              <span className="step-index">步骤 {stepIndex + 1}</span>
+                              <strong>{describeMacroStep(step)}</strong>
+                            </div>
+                            <button
+                              className="btn-ghost icon-only delete-btn"
+                              title="移除此步骤"
+                              onClick={() => removeRuleStep(selectedEditorMove, stepIndex)}
+                              disabled={selectedAction.steps.length <= 1}
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+
+                          <div className="step-config-grid">
+                            <label className="step-field">
+                              <span>动作类型</span>
+                              <select
+                                className="select-field small"
+                                value={step.kind}
+                                onChange={(event) => updateRuleKind(selectedEditorMove, stepIndex, event.target.value)}
+                              >
+                                <option value="keyboard">键盘</option>
+                                <option value="mouse">鼠标</option>
+                              </select>
+                            </label>
+
+                            <label className="step-field">
+                              <span>执行方式</span>
+                              <select
+                                className="select-field small"
+                                value={step.behavior}
+                                onChange={(event) => updateRuleBehavior(selectedEditorMove, stepIndex, event.target.value)}
+                              >
+                                {ACTION_BEHAVIORS.map((behavior) => (
+                                  <option key={behavior} value={behavior}>{behavior === "tap" ? "单击" : "按住"}</option>
+                                ))}
+                              </select>
+                            </label>
+
+                            <label className="step-field">
+                              <span>目标关系</span>
+                              <select
+                                className="select-field small"
+                                value={step.mode}
+                                onChange={(event) => updateRuleMode(selectedEditorMove, stepIndex, event.target.value as StepExecutionMode)}
+                              >
+                                <option value="sequence">顺序执行</option>
+                                <option value="chord">同时触发</option>
+                              </select>
+                            </label>
+
+                            <label className="step-field">
+                              <span>按住时长</span>
+                              <div className={`duration-wrapper ${step.behavior !== "hold" ? "disabled" : ""}`}>
+                                <input
+                                  className="input-field small duration-input"
+                                  type="number"
+                                  min={10}
+                                  step={10}
+                                  value={step.durationMs}
+                                  onChange={(event) => updateRuleDuration(selectedEditorMove, stepIndex, event.target.value)}
+                                  disabled={step.behavior !== "hold"}
+                                />
+                                <span className="unit">ms</span>
+                              </div>
+                            </label>
+                          </div>
+
+                          <div className="step-targets-panel">
+                            <div className="step-targets-header">
+                              <span>触发目标</span>
+                              <button className="btn-ghost step-add-btn" onClick={() => addStepTarget(selectedEditorMove, stepIndex)}>
+                                <Plus size={14} /> 添加目标
+                              </button>
+                            </div>
+                            <div className="step-target-list">
+                              {step.targets.map((target, targetIndex) => (
+                                <div key={`${selectedEditorMove}-step-${stepIndex}-target-${targetIndex}`} className="step-target-item">
+                                  <select
+                                    className="select-field small"
+                                    value={target}
+                                    onChange={(event) => updateRuleTarget(selectedEditorMove, stepIndex, targetIndex, event.target.value)}
+                                  >
+                                    {targetOptions.map((option) => (
+                                      <option key={`${step.kind}-${String(option.value)}`} value={option.value}>{option.label}</option>
+                                    ))}
+                                  </select>
+                                  <button
+                                    className="btn-ghost icon-only delete-btn"
+                                    title="移除此目标"
+                                    onClick={() => removeStepTarget(selectedEditorMove, stepIndex, targetIndex)}
+                                    disabled={step.targets.length <= 1}
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
             </div>
           </div>
         ) : null}
@@ -1261,44 +1218,22 @@ export function CubeDebugPage() {
       <div className="workspace-container">
          <div className="page-header">
           <div>
-            <h2>最近转动</h2>
-            <p>原始转动数据，共记录 {moveLogs.length} 条</p>
+            <h2>动作日志</h2>
+            <p>合并后的转动与执行日志，共记录 {actionLogs.length} 条</p>
           </div>
         </div>
-        <div className="log-panel">
-          {moveLogs.length === 0 ? (
+        <div className="log-panel highlight">
+          {actionLogs.length === 0 ? (
             <div className="empty-state-box">
               <Compass strokeWidth={1.5} />
               <span>等待魔方转动输入...</span>
             </div>
-          ) : moveLogs.map((log, index) => (
-            <div className="log-item" key={`${log.move}-${log.localTimestamp}-${index}`}>
-              <span className="time">{formatTime(log.localTimestamp)}</span>
-              <span className="move">{log.move}</span>
+          ) : actionLogs.map((log, index) => (
+            <div className="log-item" key={`${log.label}-${log.timestamp}-${index}`}>
+              <span className="time">{formatTime(log.timestamp)}</span>
+              <span className="move">{log.label}</span>
+              {log.detail ? <span>{`-> ${log.detail}`}</span> : null}
             </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  function renderActions() {
-    return (
-      <div className="workspace-container">
-        <div className="page-header">
-          <div>
-            <h2>执行回响</h2>
-            <p>实际触发的操作日志</p>
-          </div>
-        </div>
-        <div className="log-panel highlight">
-          {executionHints.length === 0 ? (
-            <div className="empty-state-box">
-              <Sparkles strokeWidth={1.5} />
-              <span>暂无执行动作...</span>
-            </div>
-          ) : executionHints.map((line, index) => (
-            <div className="log-item" key={`${line}-${index}`}>{line}</div>
           ))}
         </div>
       </div>
@@ -1369,9 +1304,9 @@ export function CubeDebugPage() {
           </div>
           <div className="dashboard-card text-center">
             <span className="info-label">开源仓库</span>
-            <a className="info-value link" href={REPOSITORY_URL} target="_blank" rel="noreferrer">GitHub 主页</a>
+            <a className="info-value link" href={REPOSITORY_URL} target="_blank" rel="noreferrer">https://github.com/huizhiLLL/RubiKey</a>
           </div>
-          <div className="dashboard-card">
+          <div className="dashboard-card text-center">
             <span className="info-label">说明</span>
             <p className="text-sm mt-sm text-secondary">当前版本主要测试了 Windows 11 环境，兼容部分 GAN 与 Moyu 新协议设备<br></br><br></br>
               如遇问题欢迎提交 Issue 或 PR（点个 Star 支持一下喵 ✨）</p>
@@ -1385,11 +1320,58 @@ export function CubeDebugPage() {
     switch (activeView) {
       case "profiles": return renderProfiles();
       case "moves": return renderMoves();
-      case "actions": return renderActions();
       case "diagnostics": return renderDiagnostics();
       case "about": return renderAbout();
       default: return renderHome();
     }
+  }
+
+  function renderBluetoothChooser() {
+    if (!bluetoothChooser.visible) {
+      return null;
+    }
+
+    return (
+      <div className="bluetooth-chooser-overlay" role="dialog" aria-modal="true" aria-label="蓝牙设备选择">
+        <div className="bluetooth-chooser-card">
+          <div className="bluetooth-chooser-header">
+            <div className="bluetooth-chooser-copy">
+              <span className="info-label">蓝牙扫描中...</span>
+              <h3>请选择要连接的智能魔方</h3>
+              <p>
+                如果未发现设备，请检查魔方的唤醒状态并确认系统蓝牙已开启
+              </p>
+            </div>
+            <button className="btn-ghost" type="button" onClick={() => void handleBluetoothChooserCancel()}>
+              取消
+            </button>
+          </div>
+
+          <div className="bluetooth-chooser-list">
+            {bluetoothChooser.devices.length === 0 ? (
+              <div className="empty-state-box compact">
+                <Bluetooth strokeWidth={1.5} />
+                <span>正在搜索附近的可用设备…</span>
+              </div>
+            ) : bluetoothChooser.devices.map((device) => (
+              <button
+                key={device.deviceId}
+                type="button"
+                className="bluetooth-chooser-item"
+                onClick={() => void handleBluetoothDeviceSelect(device.deviceId)}
+              >
+                <span className="bluetooth-chooser-device">
+                  <strong>{device.deviceName}</strong>
+                  <span>{device.deviceId}</span>
+                </span>
+                <span className="bluetooth-chooser-action">连接</span>
+              </button>
+            ))}
+          </div>
+
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -1440,6 +1422,7 @@ export function CubeDebugPage() {
       <section className="main-content">
         {renderContent()}
       </section>
+      {renderBluetoothChooser()}
     </main>
   );
 }

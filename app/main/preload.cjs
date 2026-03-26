@@ -1,9 +1,11 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("rubikey", {
-  version: "0.1.1",
   executeActionForMove(move) {
     return ipcRenderer.invoke("macro:execute-for-move", move);
+  },
+  getVersion() {
+    return ipcRenderer.invoke("app:get-version");
   },
   loadProfileConfig() {
     return ipcRenderer.invoke("profiles:load");
@@ -13,6 +15,19 @@ contextBridge.exposeInMainWorld("rubikey", {
   },
   getRuntimeState() {
     return ipcRenderer.invoke("runtime:get-state");
+  },
+  onBluetoothChooserStateChange(listener) {
+    const wrappedListener = (_event, state) => listener(state);
+    ipcRenderer.on("bluetooth:chooser-state", wrappedListener);
+    return () => {
+      ipcRenderer.removeListener("bluetooth:chooser-state", wrappedListener);
+    };
+  },
+  chooseBluetoothDevice(requestId, deviceId) {
+    return ipcRenderer.invoke("bluetooth:select-device", { requestId, deviceId });
+  },
+  cancelBluetoothChooser(requestId) {
+    return ipcRenderer.invoke("bluetooth:cancel-chooser", requestId);
   },
   toggleEnabled() {
     return ipcRenderer.invoke("runtime:toggle-enabled");

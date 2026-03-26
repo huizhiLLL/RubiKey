@@ -1,5 +1,5 @@
-﻿import { CubeDebugPage } from "./pages/CubeDebugPage";
+import { RubiKeyControlPage } from "./pages/RubiKeyControlPage";
 
 export function App() {
-  return <CubeDebugPage />;
+  return <RubiKeyControlPage />;
 }
