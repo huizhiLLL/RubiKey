@@ -13,6 +13,12 @@ contextBridge.exposeInMainWorld("rubikey", {
   saveProfileConfig(config) {
     return ipcRenderer.invoke("profiles:save", config);
   },
+  exportSingleProfile(profile) {
+    return ipcRenderer.invoke("profiles:export-one", profile);
+  },
+  importSingleProfile() {
+    return ipcRenderer.invoke("profiles:import-one");
+  },
   getRuntimeState() {
     return ipcRenderer.invoke("runtime:get-state");
   },

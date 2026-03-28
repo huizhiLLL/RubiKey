@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { MacroExecutionResult } from "../shared/macro.js";
-import type { ProfileConfig } from "../shared/profiles.js";
+import type { ExportProfileResult, ImportProfileResult, MappingProfile, ProfileConfig } from "../shared/profiles.js";
 import type { RuntimeState } from "../shared/runtime.js";
 import type { MoveToken } from "../shared/move.js";
 import type { CubeGyroEvent } from "../shared/gyro.js";
@@ -17,6 +17,12 @@ contextBridge.exposeInMainWorld("rubikey", {
   },
   saveProfileConfig(config: ProfileConfig) {
     return ipcRenderer.invoke("profiles:save", config) as Promise<ProfileConfig>;
+  },
+  exportSingleProfile(profile: MappingProfile) {
+    return ipcRenderer.invoke("profiles:export-one", profile) as Promise<ExportProfileResult>;
+  },
+  importSingleProfile() {
+    return ipcRenderer.invoke("profiles:import-one") as Promise<ImportProfileResult>;
   },
   getRuntimeState() {
     return ipcRenderer.invoke("runtime:get-state") as Promise<RuntimeState>;

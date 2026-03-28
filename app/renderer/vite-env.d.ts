@@ -3,7 +3,7 @@
 import type { MacroExecutionResult } from "@shared/macro";
 import type { CubeGyroEvent } from "@shared/gyro";
 import type { BluetoothChooserState } from "@shared/bluetooth-picker";
-import type { ProfileConfig } from "@shared/profiles";
+import type { ExportProfileResult, ImportProfileResult, MappingProfile, ProfileConfig } from "@shared/profiles";
 import type { RuntimeState } from "@shared/runtime";
 import type { MoveToken } from "@shared/move";
 
@@ -14,6 +14,8 @@ declare global {
       getVersion(): Promise<string>;
       loadProfileConfig(): Promise<ProfileConfig>;
       saveProfileConfig(config: ProfileConfig): Promise<ProfileConfig>;
+      exportSingleProfile(profile: MappingProfile): Promise<ExportProfileResult>;
+      importSingleProfile(): Promise<ImportProfileResult>;
       getRuntimeState(): Promise<RuntimeState>;
       onBluetoothChooserStateChange(listener: (state: BluetoothChooserState) => void): () => void;
       chooseBluetoothDevice(requestId: number, deviceId: string): Promise<boolean>;

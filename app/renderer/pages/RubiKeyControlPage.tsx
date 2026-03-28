@@ -16,6 +16,8 @@ import {
   createBlankProfile,
   createDefaultProfileConfig,
   getBoundMoves,
+  normalizeMappingProfile,
+  type MappingProfile,
   type ProfileConfig
 } from "@shared/profiles";
 import {
@@ -28,8 +30,8 @@ import {
 import type { BluetoothChooserState } from "@shared/bluetooth-picker";
 import type { RuntimeState } from "@shared/runtime";
 import { ALL_MOVES, type MoveToken } from "@shared/move";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Activity, BookOpenText, CircleHelp, Compass, House, Info, Palette, PanelLeftClose, PanelLeftOpen, Plus, Save, Trash2, Bluetooth, Play, Square, AlertOctagon, RefreshCw, MousePointer2, Settings2, Inbox, Ghost } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { Activity, BookOpenText, CircleHelp, Compass, Download, House, Import, Info, Palette, PanelLeftClose, PanelLeftOpen, Plus, Save, Trash2, Bluetooth, Play, Square, AlertOctagon, RefreshCw, MousePointer2, Settings2, Inbox, Ghost } from "lucide-react";
 import { createSmartCubeConnector, type CubeDebugEntry } from "../../cube";
 import { getRememberedMac, saveMacInputValue } from "../../cube/core/mac";
 import appIconUrl from "../../../assets/favicon.svg";
@@ -59,6 +61,13 @@ const EMPTY_BLUETOOTH_CHOOSER_STATE: BluetoothChooserState = {
   requestId: 0,
   devices: []
 };
+
+interface ThemeRippleState {
+  id: number;
+  x: number;
+  y: number;
+  radius: number;
+}
 
 function formatTime(timestamp: number) {
   return new Date(timestamp).toLocaleTimeString("zh-CN", {
@@ -165,6 +174,41 @@ function getNextAvailableTarget(step: MacroStepConfig) {
   return getTargetOptions(step).find((option) => !usedTargets.has(option.value))?.value ?? null;
 }
 
+function makeImportedProfileName(baseName: string, existingProfiles: MappingProfile[]) {
+  const takenNames = new Set(existingProfiles.map((profile) => profile.name.trim()));
+  const trimmedBase = baseName.trim() || "导入方案";
+
+  if (!takenNames.has(trimmedBase)) {
+    return trimmedBase;
+  }
+
+  const importedBase = `${trimmedBase}-导入`;
+  if (!takenNames.has(importedBase)) {
+    return importedBase;
+  }
+
+  let index = 2;
+  while (takenNames.has(`${importedBase}-${index}`)) {
+    index += 1;
+  }
+  return `${importedBase}-${index}`;
+}
+
+function uniquifyImportedProfile(profile: MappingProfile, existingProfiles: MappingProfile[]) {
+  const normalized = normalizeMappingProfile(profile);
+  const existingIds = new Set(existingProfiles.map((item) => item.id));
+  const nextId = existingIds.has(normalized.id)
+    ? `${normalized.id}-import-${Date.now()}`
+    : normalized.id;
+
+  return {
+    ...normalized,
+    id: nextId,
+    name: makeImportedProfileName(normalized.name, existingProfiles),
+    updatedAt: Date.now()
+  } satisfies MappingProfile;
+}
+
 function getRubikeyApi() {
   if (!window.rubikey) {
     throw new Error("RubiKey preload API 未注入，请彻底退出后重新打开应用，或重新打包 portable 版本");
@@ -187,10 +231,12 @@ export function RubiKeyControlPage() {
   const mappingEnabledRef = useRef(false);
   const hasLoadedProfilesRef = useRef(false);
   const saveTimerRef = useRef<number | null>(null);
+  const themeAnimationTimerRef = useRef<number | null>(null);
   const gyroConfigRef = useRef(createDefaultProfileConfig().gyroMouse);
   const gyroBasisRef = useRef<ReturnType<typeof createGyroBasis> | null>(null);
   const gyroPreviewRef = useRef(createIdleGyroPreviewState());
   const macHelpPopoverRef = useRef<HTMLSpanElement | null>(null);
+  const themeToggleButtonRef = useRef<HTMLButtonElement | null>(null);
   const[activeView, setActiveView] = useState<ViewKey>("home");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.localStorage.getItem("rubikey.sidebar.collapsed") === "1");
   const [theme, setTheme] = useState<ThemeKey>(() => {
@@ -216,6 +262,8 @@ export function RubiKeyControlPage() {
   const [isMacHelpOpen, setIsMacHelpOpen] = useState(false);
   const [bluetoothChooser, setBluetoothChooser] = useState<BluetoothChooserState>(EMPTY_BLUETOOTH_CHOOSER_STATE);
   const [appVersion, setAppVersion] = useState<string>("读取中...");
+  const [profileFileState, setProfileFileState] = useState<string>("");
+  const [themeRipple, setThemeRipple] = useState<ThemeRippleState | null>(null);
 
   const canUseBluetooth = useMemo(
     () => typeof navigator !== "undefined" && "bluetooth" in navigator,[]
@@ -245,6 +293,15 @@ export function RubiKeyControlPage() {
     document.body.dataset.theme = theme;
     window.localStorage.setItem(THEME_STORAGE_KEY, theme);
   }, [theme]);
+
+  useEffect(() => {
+    return () => {
+      if (themeAnimationTimerRef.current !== null) {
+        window.clearTimeout(themeAnimationTimerRef.current);
+      }
+      document.body.classList.remove("theme-animating");
+    };
+  }, []);
 
   useEffect(() => {
     if (!isMacHelpOpen) {
@@ -729,6 +786,36 @@ export function RubiKeyControlPage() {
     }
   }
 
+  async function exportCurrentProfile() {
+    if (!activeProfile) {
+      return;
+    }
+
+    setProfileFileState("正在导出当前方案...");
+    const result = await getRubikeyApi().exportSingleProfile(activeProfile);
+    setProfileFileState(result.ok ? `${result.message}：${result.filePath}` : result.message);
+  }
+
+  async function importProfile() {
+    setProfileFileState("正在导入方案...");
+    const result = await getRubikeyApi().importSingleProfile();
+    if (!result.ok) {
+      setProfileFileState(result.message);
+      return;
+    }
+
+    const importedProfile = uniquifyImportedProfile(result.profile, profileConfig.profiles);
+    patchConfig((draft) => {
+      draft.profiles.push(importedProfile);
+      draft.activeProfileId = importedProfile.id;
+    });
+    setProfileFileState(
+      importedProfile.name === result.profile.name
+        ? `已导入方案：${importedProfile.name}`
+        : `已导入方案：${result.profile.name} -> ${importedProfile.name}`
+    );
+  }
+
   function renderHome() {
     return (
       <div className="workspace-container">
@@ -760,8 +847,8 @@ export function RubiKeyControlPage() {
                   <button
                     type="button"
                     className="mac-help-trigger"
-                    title="查看 MAC 获取说明"
-                    aria-label="查看 MAC 获取说明"
+                    title="查看 MAC 地址获取方法"
+                    aria-label="查看 MAC 地址获取方法"
                     aria-expanded={isMacHelpOpen}
                     aria-haspopup="dialog"
                     onClick={(event) => {
@@ -775,7 +862,7 @@ export function RubiKeyControlPage() {
                   </button>
                   {isMacHelpOpen ? (
                     <span className="mac-help-popover" role="dialog" aria-label="MAC 地址获取说明">
-                      <span className="mac-help-title">获取 MAC 地址的方法如下（打开对应的网址，通过设备名称查找对应的 MAC 地址）：</span>
+                      <span className="mac-help-title">获取 MAC 地址的方法（打开对应的网址，通过设备名称查找对应的 MAC 地址）：</span>
                       <span className="mac-help-row">
                         <span className="mac-help-browser">Chrome:</span>
                         <code>chrome://bluetooth-internals/#devices</code>
@@ -823,7 +910,7 @@ export function RubiKeyControlPage() {
             <div className="card-header">
               <div className="card-title">
                 <Play size={18} />
-                <h3>映射控制</h3>
+                <h3>映射</h3>
               </div>
               <span className={`status-badge ${runtimeState?.enabled ? 'active' : 'paused'}`}>
                 {runtimeState?.enabled ? "运行中" : "已暂停"}
@@ -978,7 +1065,14 @@ export function RubiKeyControlPage() {
             <h2>方案映射</h2>
             <p>配置不同场景的映射规则</p>
           </div>
-          <div className="header-actions">
+          <div className="header-actions profile-page-actions">
+            {profileFileState ? <span className="profile-file-state">{profileFileState}</span> : null}
+            <button className="btn-ghost" title="导入单个方案" onClick={() => void importProfile()}>
+              <Import size={16} /> 导入
+            </button>
+            <button className="btn-ghost" title="导出当前方案" onClick={() => void exportCurrentProfile()} disabled={!activeProfile}>
+              <Download size={16} /> 导出当前方案
+            </button>
             <span className="save-status">{saveState}</span>
             <button className="btn-primary icon-only" title="保存" onClick={saveProfiles}>
               <Save size={16} />
@@ -1005,7 +1099,7 @@ export function RubiKeyControlPage() {
           <div className="profile-editor-area">
             <div className="profile-toolbar">
               <div className="input-group-inline">
-                <label>方案名称</label>
+                <label>名称</label>
                 <input 
                   className="input-field max-w-sm" 
                   value={activeProfile.name} 
@@ -1026,8 +1120,7 @@ export function RubiKeyControlPage() {
               <section className="mapping-browser">
                 <div className="mapping-browser-header">
                   <div>
-                    <h3>选择转动</h3>
-                    <p>先点一个转动，再在右侧配置它要触发的动作</p>
+                    <h3>选择</h3>
                   </div>
                   <span className="mapping-browser-count">{boundMoves.length}/{ALL_MOVES.length} 已配置</span>
                 </div>
@@ -1050,7 +1143,7 @@ export function RubiKeyControlPage() {
                           </span>
                         </div>
                         <span className="move-selector-summary">
-                          {configured ? describeAction(action) : "点击开始配置这个转动"}
+                          {configured ? describeAction(action) : "点击配置"}
                         </span>
                       </button>
                     );
@@ -1061,7 +1154,7 @@ export function RubiKeyControlPage() {
               <section className="mapping-detail-panel">
                 <div className="mapping-detail-header">
                   <div>
-                    <div className="mapping-detail-kicker">当前编辑</div>
+                    <div className="mapping-detail-kicker">当前</div>
                     <h3>{selectedEditorMove}</h3>
                     <p>
                       {selectedAction
@@ -1073,15 +1166,15 @@ export function RubiKeyControlPage() {
                     {selectedAction ? (
                       <>
                         <button className="btn-ghost" onClick={() => addRuleStep(selectedEditorMove)}>
-                          <Plus size={14} /> 添加步骤
+                          <Plus size={14} /> 添加
                         </button>
                         <button className="btn-danger" onClick={() => removeBinding(selectedEditorMove)}>
-                          <Trash2 size={14} /> 清空映射
+                          <Trash2 size={14} /> 清空
                         </button>
                       </>
                     ) : (
                       <button className="btn-primary" onClick={() => addBinding(selectedEditorMove)}>
-                        <Plus size={14} /> 为 {selectedEditorMove} 创建映射
+                        <Plus size={14} />创建
                       </button>
                     )}
                   </div>
@@ -1090,8 +1183,7 @@ export function RubiKeyControlPage() {
                 {!selectedAction ? (
                   <div className="mapping-empty-state">
                     <Ghost strokeWidth={1.5} />
-                    <strong>{selectedEditorMove} 还没有绑定动作</strong>
-                    <span>创建后可以选择键盘或鼠标，并按步骤组合成一个动作。</span>
+                    <strong>{selectedEditorMove} 暂无配置</strong>
                   </div>
                 ) : (
                   <div className="macro-steps elevated">
@@ -1116,7 +1208,7 @@ export function RubiKeyControlPage() {
 
                           <div className="step-config-grid">
                             <label className="step-field">
-                              <span>动作类型</span>
+                              <span>类型</span>
                               <select
                                 className="select-field small"
                                 value={step.kind}
@@ -1128,7 +1220,7 @@ export function RubiKeyControlPage() {
                             </label>
 
                             <label className="step-field">
-                              <span>执行方式</span>
+                              <span>方式</span>
                               <select
                                 className="select-field small"
                                 value={step.behavior}
@@ -1141,19 +1233,19 @@ export function RubiKeyControlPage() {
                             </label>
 
                             <label className="step-field">
-                              <span>目标关系</span>
+                              <span>关系</span>
                               <select
                                 className="select-field small"
                                 value={step.mode}
                                 onChange={(event) => updateRuleMode(selectedEditorMove, stepIndex, event.target.value as StepExecutionMode)}
                               >
-                                <option value="sequence">顺序执行</option>
-                                <option value="chord">同时触发</option>
+                                <option value="sequence">顺序</option>
+                                <option value="chord">同时</option>
                               </select>
                             </label>
 
                             <label className="step-field">
-                              <span>按住时长</span>
+                              <span>时长</span>
                               <div className={`duration-wrapper ${step.behavior !== "hold" ? "disabled" : ""}`}>
                                 <input
                                   className="input-field small duration-input"
@@ -1171,9 +1263,9 @@ export function RubiKeyControlPage() {
 
                           <div className="step-targets-panel">
                             <div className="step-targets-header">
-                              <span>触发目标</span>
+                              <span>目标</span>
                               <button className="btn-ghost step-add-btn" onClick={() => addStepTarget(selectedEditorMove, stepIndex)}>
-                                <Plus size={14} /> 添加目标
+                                <Plus size={14} /> 添加
                               </button>
                             </div>
                             <div className="step-target-list">
@@ -1219,7 +1311,7 @@ export function RubiKeyControlPage() {
          <div className="page-header">
           <div>
             <h2>动作日志</h2>
-            <p>合并后的转动与执行日志，共记录 {actionLogs.length} 条</p>
+            <p>转动与执行日志，共记录 {actionLogs.length} 条</p>
           </div>
         </div>
         <div className="log-panel highlight">
@@ -1262,12 +1354,12 @@ export function RubiKeyControlPage() {
           </section>
 
           <section className="diag-log-panel">
-            <h3>详细通信日志</h3>
+            <h3>通信日志</h3>
             <div className="log-panel small">
               {debugLogs.length === 0 ? (
                 <div className="empty-state-box">
                   <Inbox strokeWidth={1.5} />
-                  <span>暂无日志</span>
+                  <span>暂无</span>
                 </div>
               ) : debugLogs.map((log, index) => (
                 <div className="log-item complex" key={`${log.timestamp}-${index}`}>
@@ -1294,7 +1386,7 @@ export function RubiKeyControlPage() {
             <img className="about-app-logo" src={appIconUrl} alt="RubiKey 应用图标" />
           </div>
           <h2>RubiKey</h2>
-          <p>基于 Electron 构建的 Windows 桌面工具<br/>让智能魔方成为你的系统级控制器</p>
+          <p>基于 Electron 构建的 Windows 桌面工具<br/>让智能魔方成为你的交互工具</p>
         </section>
 
         <div className="about-cards">
@@ -1324,6 +1416,41 @@ export function RubiKeyControlPage() {
       case "about": return renderAbout();
       default: return renderHome();
     }
+  }
+
+  function toggleThemeWithTransition(event?: ReactMouseEvent<HTMLButtonElement>) {
+    const nextTheme: ThemeKey = theme === "blossom" ? "mist" : "blossom";
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setTheme(nextTheme);
+      return;
+    }
+
+    const rect = themeToggleButtonRef.current?.getBoundingClientRect();
+    const originX = event?.clientX ?? (rect ? rect.left + rect.width / 2 : 72);
+    const originY = event?.clientY ?? (rect ? rect.top + rect.height / 2 : window.innerHeight - 72);
+    const radius = Math.hypot(
+      Math.max(originX, window.innerWidth - originX),
+      Math.max(originY, window.innerHeight - originY)
+    );
+
+    if (themeAnimationTimerRef.current !== null) {
+      window.clearTimeout(themeAnimationTimerRef.current);
+    }
+
+    document.body.classList.add("theme-animating");
+    setThemeRipple({
+      id: Date.now(),
+      x: originX,
+      y: originY,
+      radius
+    });
+    setTheme(nextTheme);
+
+    themeAnimationTimerRef.current = window.setTimeout(() => {
+      document.body.classList.remove("theme-animating");
+      setThemeRipple(null);
+      themeAnimationTimerRef.current = null;
+    }, 420);
   }
 
   function renderBluetoothChooser() {
@@ -1380,6 +1507,20 @@ export function RubiKeyControlPage() {
         <div className="blob top-left"></div>
         <div className="blob bottom-right"></div>
       </div>
+      {themeRipple ? (
+        <div
+          key={themeRipple.id}
+          className="theme-ripple-overlay"
+          aria-hidden="true"
+          style={
+            {
+              "--theme-ripple-x": `${themeRipple.x}px`,
+              "--theme-ripple-y": `${themeRipple.y}px`,
+              "--theme-ripple-radius": `${themeRipple.radius}px`
+            } as CSSProperties
+          }
+        />
+      ) : null}
       
       <aside className="sidebar">
         <div className="sidebar-header">
@@ -1409,9 +1550,10 @@ export function RubiKeyControlPage() {
 
         <div className="sidebar-footer">
           <button
+            ref={themeToggleButtonRef}
             className="theme-toggle-btn"
             title="切换主题"
-            onClick={() => setTheme(prev => prev === "blossom" ? "mist" : "blossom")}
+            onClick={toggleThemeWithTransition}
           >
             <span className="icon-wrapper"><Palette size={16} /></span>
             {!sidebarCollapsed && <span className="label">{theme === "mist" ? "切至樱粉" : "切至淡蓝"}</span>}
@@ -1420,7 +1562,9 @@ export function RubiKeyControlPage() {
       </aside>
 
       <section className="main-content">
-        {renderContent()}
+        <div key={activeView} className="content-transition-layer">
+          {renderContent()}
+        </div>
       </section>
       {renderBluetoothChooser()}
     </main>

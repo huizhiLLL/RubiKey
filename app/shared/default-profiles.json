@@ -1,19 +1,174 @@
 [
   {
-    "id": "minecraft",
-    "name": "Minecraft",
+    "id": "minecraft-cube",
+    "name": "mc-cube",
     "rules": {
-      "U": { "steps": [{ "kind": "keyboard", "target": "a", "behavior": "hold", "durationMs": 1000 }] },
-      "U'": { "steps": [{ "kind": "keyboard", "target": "d", "behavior": "hold", "durationMs": 1000 }] },
-      "R": { "steps": [{ "kind": "keyboard", "target": "w", "behavior": "hold", "durationMs": 1000 }] },
-      "R'": { "steps": [{ "kind": "keyboard", "target": "s", "behavior": "hold", "durationMs": 1000 }] },
-      "D": { "steps": [{ "kind": "keyboard", "target": "e", "behavior": "tap", "durationMs": 100 }] },
+      "U": {
+        "steps": [
+          {
+            "kind": "keyboard",
+            "targets": [
+              "shift",
+              "space"
+            ],
+            "behavior": "hold",
+            "mode": "chord",
+            "durationMs": 30
+          }
+        ]
+      },
+      "U'": {
+        "steps": [
+          {
+            "kind": "keyboard",
+            "targets": [
+              "shift"
+            ],
+            "behavior": "hold",
+            "mode": "sequence",
+            "durationMs": 30
+          }
+        ]
+      },
+      "R": {
+        "steps": [
+          {
+            "kind": "keyboard",
+            "targets": [
+              "6",
+              "s"
+            ],
+            "behavior": "hold",
+            "mode": "sequence",
+            "durationMs": 50
+          }
+        ]
+      },
+      "R'": {
+        "steps": [
+          {
+            "kind": "keyboard",
+            "targets": [
+              "6",
+              "w"
+            ],
+            "behavior": "hold",
+            "mode": "sequence",
+            "durationMs": 50
+          }
+        ]
+      },
       "F": {
         "steps": [
-          { "kind": "mouse", "target": "left", "behavior": "tap", "durationMs": 100 },
-          { "kind": "keyboard", "target": "1", "behavior": "tap", "durationMs": 100 }
+          {
+            "kind": "keyboard",
+            "targets": [
+              "8",
+              "s"
+            ],
+            "behavior": "hold",
+            "mode": "sequence",
+            "durationMs": 50
+          }
+        ]
+      },
+      "F'": {
+        "steps": [
+          {
+            "kind": "keyboard",
+            "targets": [
+              "8",
+              "w"
+            ],
+            "behavior": "hold",
+            "mode": "sequence",
+            "durationMs": 50
+          }
+        ]
+      },
+      "D": {
+        "steps": [
+          {
+            "kind": "keyboard",
+            "targets": [
+              "a"
+            ],
+            "behavior": "hold",
+            "mode": "sequence",
+            "durationMs": 30
+          }
+        ]
+      },
+      "D'": {
+        "steps": [
+          {
+            "kind": "keyboard",
+            "targets": [
+              "d"
+            ],
+            "behavior": "hold",
+            "mode": "sequence",
+            "durationMs": 30
+          }
+        ]
+      },
+      "L": {
+        "steps": [
+          {
+            "kind": "keyboard",
+            "targets": [
+              "7",
+              "w"
+            ],
+            "behavior": "hold",
+            "mode": "sequence",
+            "durationMs": 50
+          }
+        ]
+      },
+      "L'": {
+        "steps": [
+          {
+            "kind": "keyboard",
+            "targets": [
+              "7",
+              "s"
+            ],
+            "behavior": "hold",
+            "mode": "sequence",
+            "durationMs": 50
+          }
+        ]
+      },
+      "B": {
+        "steps": [
+          {
+            "kind": "keyboard",
+            "targets": [
+              "4",
+              "s"
+            ],
+            "behavior": "hold",
+            "mode": "sequence",
+            "durationMs": 50
+          }
+        ]
+      },
+      "B'": {
+        "steps": [
+          {
+            "kind": "keyboard",
+            "targets": [
+              "4",
+              "w"
+            ],
+            "behavior": "hold",
+            "mode": "sequence",
+            "durationMs": 50
+          }
         ]
       }
-    }
+    },
+    "updatedAt": 1774719766366
   }
 ]

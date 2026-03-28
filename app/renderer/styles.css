@@ -149,6 +149,11 @@ body {
   overflow-y: auto;
   position: relative;
 }
+.content-transition-layer {
+  min-height: 100%;
+  animation: content-fade-in 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  transform-origin: top center;
+}
 .workspace-container {
   max-width: 1000px;
   margin: 0 auto;
@@ -158,10 +163,80 @@ body {
 }
 .workspace-container.full-height { min-height: 100%; }
 
+@keyframes content-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .content-transition-layer {
+    animation: none;
+  }
+}
+
+.theme-animating,
+.theme-animating *,
+.theme-animating *::before,
+.theme-animating *::after {
+  transition-property: background, background-color, color, border-color, box-shadow, fill, stroke;
+  transition-duration: 320ms;
+  transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.theme-ripple-overlay {
+  --theme-ripple-x: 72px;
+  --theme-ripple-y: calc(100vh - 72px);
+  --theme-ripple-radius: 0px;
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 50;
+  background:
+    radial-gradient(
+      circle at var(--theme-ripple-x) var(--theme-ripple-y),
+      color-mix(in srgb, var(--c-surface-solid) 82%, transparent) 0%,
+      color-mix(in srgb, var(--c-primary-light) 88%, transparent) 18%,
+      color-mix(in srgb, var(--c-primary) 12%, transparent) 48%,
+      transparent 72%
+    );
+  animation: theme-ripple-reveal 420ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes theme-ripple-reveal {
+  from {
+    opacity: 0.9;
+    clip-path: circle(0 at var(--theme-ripple-x) var(--theme-ripple-y));
+  }
+
+  to {
+    opacity: 0;
+    clip-path: circle(var(--theme-ripple-radius) at var(--theme-ripple-x) var(--theme-ripple-y));
+  }
+}
+
 .page-header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 8px; }
 .page-header h2 { font-family: var(--font-heading); font-size: 1.8rem; margin: 0 0 4px 0; }
 .page-header p { margin: 0; color: var(--c-text-muted); font-size: 0.95rem; }
 .header-actions { display: flex; align-items: center; gap: 12px; }
+.profile-page-actions { flex-wrap: wrap; justify-content: flex-end; }
+.save-status,
+.profile-file-state {
+  font-size: 0.85rem;
+  color: var(--c-text-muted);
+  line-height: 1.5;
+}
+.profile-file-state {
+  max-width: 320px;
+  text-align: right;
+  word-break: break-word;
+}
 
 /* Dashboard Cards */
 .dashboard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 24px; }

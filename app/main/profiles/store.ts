@@ -1,11 +1,9 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
-  createBlankProfile,
   createDefaultProfileConfig,
+  normalizeMappingProfile,
   normalizeGyroMouseSettings,
-  normalizeProfileRules,
-  type MappingProfile,
   type ProfileConfig
 } from "../../shared/profiles.js";
 
@@ -47,13 +45,7 @@ export class ProfileStore {
     } satisfies ProfileConfig;
   }
 
-  private normalizeProfile(input: Partial<MappingProfile>) {
-    const fallback = createBlankProfile();
-    return {
-      id: input.id ?? fallback.id,
-      name: input.name ?? fallback.name,
-      rules: normalizeProfileRules(input.rules),
-      updatedAt: input.updatedAt ?? Date.now()
-    } satisfies MappingProfile;
+  private normalizeProfile(input: Parameters<typeof normalizeMappingProfile>[0]) {
+    return normalizeMappingProfile(input);
   }
 }

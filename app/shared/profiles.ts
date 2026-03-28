@@ -1,8 +1,7 @@
 import {
   createDefaultKeyboardAction,
   normalizeMacroAction,
-  type MacroActionConfig,
-  type RawMacroActionConfig
+  type MacroActionConfig
 } from "./macro.js";
 import { createDefaultGyroMouseConfig, normalizeGyroMouseConfig, type GyroMouseConfig } from "./gyro.js";
 import { ALL_MOVES, type MoveToken } from "./move.js";
@@ -17,6 +16,36 @@ export interface MappingProfile {
   updatedAt: number;
 }
 
+export interface ProfileExchangeFile {
+  schemaVersion: 1;
+  exportedAt: number;
+  profile: MappingProfile;
+}
+
+interface ProfileOperationFailure {
+  ok: false;
+  canceled: boolean;
+  message: string;
+}
+
+export interface ExportProfileSuccess {
+  ok: true;
+  canceled: false;
+  message: string;
+  filePath: string;
+}
+
+export interface ImportProfileSuccess {
+  ok: true;
+  canceled: false;
+  message: string;
+  filePath: string;
+  profile: MappingProfile;
+}
+
+export type ExportProfileResult = ExportProfileSuccess | ProfileOperationFailure;
+export type ImportProfileResult = ImportProfileSuccess | ProfileOperationFailure;
+
 export interface ProfileConfig {
   enabled: boolean;
   gyroMouse: GyroMouseConfig;
@@ -28,7 +57,8 @@ export interface ProfileConfig {
 type DefaultProfileSeed = {
   id: string;
   name: string;
-  rules?: Partial<Record<MoveToken, RawMacroActionConfig>>;
+  rules?: Partial<Record<MoveToken, MacroActionConfig | null>>;
+  updatedAt?: number;
 };
 
 export function createEmptyRules(): ProfileRuleMap {
@@ -43,7 +73,7 @@ export function getUnboundMoves(profile: MappingProfile) {
   return ALL_MOVES.filter((move) => profile.rules[move] == null);
 }
 
-export function normalizeProfileRules(input?: Partial<Record<MoveToken, RawMacroActionConfig>>) {
+export function normalizeProfileRules(input?: Partial<Record<MoveToken, MacroActionConfig | null>>) {
   const rules = createEmptyRules();
   for (const move of ALL_MOVES) {
     rules[move] = normalizeMacroAction(input?.[move]);
@@ -56,7 +86,7 @@ export function createDefaultProfiles() {
     id: profile.id,
     name: profile.name,
     rules: normalizeProfileRules(profile.rules),
-    updatedAt: Date.now()
+    updatedAt: profile.updatedAt ?? Date.now()
   })) satisfies MappingProfile[];
 }
 
@@ -66,6 +96,24 @@ export function createBlankProfile(name = "新方案"): MappingProfile {
     name,
     rules: createEmptyRules(),
     updatedAt: Date.now()
+  };
+}
+
+export function normalizeMappingProfile(input?: Partial<MappingProfile> | null): MappingProfile {
+  const fallback = createBlankProfile();
+  return {
+    id: input?.id ?? fallback.id,
+    name: input?.name ?? fallback.name,
+    rules: normalizeProfileRules(input?.rules),
+    updatedAt: input?.updatedAt ?? Date.now()
+  };
+}
+
+export function createProfileExchangeFile(profile: MappingProfile): ProfileExchangeFile {
+  return {
+    schemaVersion: 1,
+    exportedAt: Date.now(),
+    profile: normalizeMappingProfile(profile)
   };
 }
 

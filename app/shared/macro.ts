@@ -44,7 +44,6 @@ export interface MacroActionConfig {
 
 export interface RawMacroStepConfig {
   kind?: ActionKind;
-  target?: MacroTarget;
   targets?: MacroTarget[];
   behavior?: ActionBehavior;
   mode?: StepExecutionMode;
@@ -55,8 +54,7 @@ export interface RawMacroActionObject {
   steps?: RawMacroStepConfig[];
 }
 
-export type LegacyMacroActionConfig = RawMacroStepConfig;
-export type RawMacroActionConfig = RawMacroActionObject | LegacyMacroActionConfig | null;
+export type RawMacroActionConfig = RawMacroActionObject | null;
 
 function isRawMacroActionObject(input: RawMacroActionConfig): input is RawMacroActionObject {
   return input != null && typeof input === "object" && "steps" in input;
@@ -90,8 +88,8 @@ const ARROW_SHORT_LABELS: Record<ArrowKey, string> = {
 };
 
 const BASIC_KEY_LABELS: Record<BasicKey, string> = {
-  space: "空格",
-  enter: "回车",
+  space: "Space",
+  enter: "Enter",
   tab: "Tab",
   esc: "Esc",
   backspace: "Backspace",
@@ -103,22 +101,22 @@ const BASIC_KEY_LABELS: Record<BasicKey, string> = {
 export const KEYBOARD_OPTIONS: ActionOption[] = [
   ...LETTER_KEYS.map((letter) => ({
     value: letter,
-    label: `键盘 ${letter.toUpperCase()} / Key ${letter.toUpperCase()}`,
+    label: `键盘 ${letter.toUpperCase()}`,
     description: `按下字母键 ${letter.toUpperCase()}`
   })),
   ...NUMBER_KEYS.map((digit) => ({
     value: digit,
-    label: `数字 ${digit} / Key ${digit}`,
+    label: `数字 ${digit}`,
     description: `按下数字键 ${digit}`
   })),
   ...ARROW_KEYS.map((direction) => ({
     value: direction,
-    label: `${ARROW_LABELS[direction]} / Arrow`,
+    label: ARROW_LABELS[direction],
     description: `按下${ARROW_LABELS[direction]}`
   })),
   ...BASIC_KEYS.map((key) => ({
     value: key,
-    label: `基础键 ${BASIC_KEY_LABELS[key]} / ${BASIC_KEY_LABELS[key]}`,
+    label: `其他 ${BASIC_KEY_LABELS[key]}`,
     description: `按下${BASIC_KEY_LABELS[key]}`
   }))
 ];
@@ -126,12 +124,12 @@ export const KEYBOARD_OPTIONS: ActionOption[] = [
 export const MOUSE_OPTIONS: ActionOption[] = [
   {
     value: "left",
-    label: "鼠标左键 / Left Mouse",
+    label: "鼠标左键",
     description: "鼠标左键点击或按住"
   },
   {
     value: "right",
-    label: "鼠标右键 / Right Mouse",
+    label: "鼠标右键",
     description: "鼠标右键点击或按住"
   }
 ];
@@ -172,11 +170,7 @@ export function normalizeMacroStep(input?: RawMacroStepConfig | null): MacroStep
   const mode = input?.mode === "chord" ? "chord" : "sequence";
   const durationMs = Math.max(10, Number.parseInt(String(input?.durationMs ?? 100), 10) || 100);
 
-  const rawTargets = Array.isArray(input?.targets)
-    ? input?.targets
-    : input && "target" in input && input.target != null
-      ? [input.target]
-      : [];
+  const rawTargets = Array.isArray(input?.targets) ? input.targets : [];
 
   if (kind === "mouse") {
     const targets = rawTargets
@@ -206,22 +200,15 @@ export function normalizeMacroStep(input?: RawMacroStepConfig | null): MacroStep
 }
 
 export function normalizeMacroAction(input?: RawMacroActionConfig): MacroActionConfig | null {
-  if (!input) {
+  if (!input || !isRawMacroActionObject(input)) {
     return null;
   }
 
-  if (isRawMacroActionObject(input)) {
-    const steps = Array.isArray(input.steps)
-      ? input.steps.map((step) => normalizeMacroStep(step))
-      : [];
+  const steps = Array.isArray(input.steps)
+    ? input.steps.map((step) => normalizeMacroStep(step))
+    : [];
 
-    return steps.length > 0 ? { steps } : null;
-  }
-
-  const singleStep = normalizeMacroStep(input);
-  return {
-    steps: [singleStep]
-  };
+  return steps.length > 0 ? { steps } : null;
 }
 
 export function formatKeyboardTargetLabel(target: KeyboardTarget, compact = false) {

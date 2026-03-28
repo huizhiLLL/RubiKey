@@ -1,4 +1,5 @@
-import { app, BrowserWindow, globalShortcut, ipcMain, Menu, Tray, nativeImage } from "electron";
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, Tray, nativeImage } from "electron";
+import { readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,7 +8,15 @@ import type { BluetoothChooserDevice, BluetoothChooserState } from "../shared/bl
 import { MacroExecutor } from "./macro/executor.js";
 import { GyroMouseController } from "./gyro/controller.js";
 import { ProfileStore } from "./profiles/store.js";
-import { createDefaultProfileConfig, type ProfileConfig } from "../shared/profiles.js";
+import {
+  createDefaultProfileConfig,
+  createProfileExchangeFile,
+  normalizeMappingProfile,
+  type ExportProfileResult,
+  type ImportProfileResult,
+  type MappingProfile,
+  type ProfileConfig
+} from "../shared/profiles.js";
 import type { RuntimeState } from "../shared/runtime.js";
 import type { MoveToken } from "../shared/move.js";
 
@@ -31,6 +40,7 @@ let emergencyStopCount = 0;
 let isQuitting = false;
 const macroExecutor = new MacroExecutor();
 const gyroMouseController = new GyroMouseController();
+const PROFILE_FILE_SUFFIX = ".rubikey-profile.json";
 
 function configurePortableUserDataPath() {
   const portableExecutableDir = process.env.PORTABLE_EXECUTABLE_DIR;
@@ -68,6 +78,129 @@ function resolveAppIconPath() {
 
 function getActiveProfile() {
   return profileConfig.profiles.find((profile) => profile.id === profileConfig.activeProfileId) ?? profileConfig.profiles[0] ?? null;
+}
+
+function sanitizeProfileFilename(value: string) {
+  const sanitized = value
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-")
+    .trim()
+    .replace(/\s+/g, "-");
+
+  return sanitized.length > 0 ? sanitized : "rubikey-profile";
+}
+
+function isPlainObject(input: unknown): input is Record<string, unknown> {
+  return typeof input === "object" && input !== null;
+}
+
+function parseImportedProfile(raw: string) {
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!isPlainObject(parsed) || parsed.schemaVersion !== 1 || !("profile" in parsed)) {
+      return null;
+    }
+
+    const profile = parsed.profile;
+    if (!isPlainObject(profile) || !isPlainObject(profile.rules)) {
+      return null;
+    }
+
+    if (typeof profile.id !== "string" || typeof profile.name !== "string") {
+      return null;
+    }
+
+    return normalizeMappingProfile(profile as Partial<MappingProfile>);
+  } catch {
+    return null;
+  }
+}
+
+async function exportSingleProfile(profile: MappingProfile): Promise<ExportProfileResult> {
+  try {
+    const dialogOptions = {
+      title: "导出当前方案",
+      defaultPath: path.join(app.getPath("downloads"), `${sanitizeProfileFilename(profile.name)}${PROFILE_FILE_SUFFIX}`),
+      filters: [
+        { name: "RubiKey 方案文件", extensions: ["json"] }
+      ]
+    } satisfies Electron.SaveDialogOptions;
+    const result = mainWindow
+      ? await dialog.showSaveDialog(mainWindow, dialogOptions)
+      : await dialog.showSaveDialog(dialogOptions);
+
+    if (result.canceled || !result.filePath) {
+      return {
+        ok: false,
+        canceled: true,
+        message: "已取消导出"
+      };
+    }
+
+    const payload = createProfileExchangeFile(profile);
+    await writeFile(result.filePath, JSON.stringify(payload, null, 2), "utf8");
+
+    return {
+      ok: true,
+      canceled: false,
+      message: "方案导出成功",
+      filePath: result.filePath
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      canceled: false,
+      message: error instanceof Error ? `导出失败：${error.message}` : "导出失败"
+    };
+  }
+}
+
+async function importSingleProfile(): Promise<ImportProfileResult> {
+  try {
+    const dialogOptions = {
+      title: "导入方案",
+      properties: ["openFile"],
+      filters: [
+        { name: "RubiKey 方案文件", extensions: ["json"] }
+      ]
+    } satisfies Electron.OpenDialogOptions;
+    const result = mainWindow
+      ? await dialog.showOpenDialog(mainWindow, dialogOptions)
+      : await dialog.showOpenDialog(dialogOptions);
+
+    if (result.canceled || result.filePaths.length === 0) {
+      return {
+        ok: false,
+        canceled: true,
+        message: "已取消导入"
+      };
+    }
+
+    const filePath = result.filePaths[0];
+    const raw = await readFile(filePath, "utf8");
+    const profile = parseImportedProfile(raw);
+
+    if (!profile) {
+      return {
+        ok: false,
+        canceled: false,
+        message: "导入失败：文件不是有效的 RubiKey 单方案格式"
+      };
+    }
+
+    return {
+      ok: true,
+      canceled: false,
+      message: "方案导入成功",
+      filePath,
+      profile
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      canceled: false,
+      message: error instanceof Error ? `导入失败：${error.message}` : "导入失败"
+    };
+  }
 }
 
 function getRuntimeState(): RuntimeState {
@@ -260,6 +393,8 @@ ipcMain.handle("profiles:save", async (_event, nextConfig: ProfileConfig) => {
   updateTrayMenu();
   return profileConfig;
 });
+ipcMain.handle("profiles:export-one", async (_event, profile: MappingProfile) => exportSingleProfile(profile));
+ipcMain.handle("profiles:import-one", async () => importSingleProfile());
 ipcMain.handle("runtime:get-state", async () => getRuntimeState());
 ipcMain.handle("runtime:toggle-enabled", async () => toggleEnabled());
 ipcMain.handle("runtime:emergency-stop", async () => emergencyStop());
