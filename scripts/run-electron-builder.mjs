@@ -10,6 +10,9 @@ const cacheDir = path.join(rootDir, '.electron-builder-cache');
 const tempDir = path.join(cacheDir, 'tmp');
 const builderArgs = process.argv.slice(2);
 const knownTargets = new Set(['portable', 'nsis']);
+const finalBuilderArgs = builderArgs.includes('--publish') || builderArgs.includes('-p')
+  ? builderArgs
+  : [...builderArgs, '--publish', 'never'];
 
 mkdirSync(tempDir, { recursive: true });
 
@@ -120,4 +123,4 @@ const run = (command, args) =>
   });
 
 await run('npm', ['run', 'build']);
-await run(process.execPath, [electronBuilderEntrypoint, ...builderArgs]);
+await run(process.execPath, [electronBuilderEntrypoint, ...finalBuilderArgs]);

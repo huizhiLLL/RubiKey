@@ -1,6 +1,6 @@
 {
   "name": "rubikey",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "private": true,
   "description": "Smart cube driven Windows macro tool",
   "main": "dist-electron/main/index.js",
