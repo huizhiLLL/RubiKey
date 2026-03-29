@@ -50,8 +50,21 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Build release artifacts
-        run: node scripts/run-electron-builder.mjs --win portable nsis --x64
+      - name: Build portable package
+        run: node scripts/run-electron-builder.mjs --win portable --x64
+
+      - name: Preserve portable package
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.pkg.outputs.version }}
+        run: |
+          New-Item -ItemType Directory -Force release-artifacts | Out-Null
+          $portable = "release/RubiKey-$env:VERSION-portable.exe"
+          if (!(Test-Path $portable)) { throw "未找到产物: $portable" }
+          Copy-Item $portable "release-artifacts/" -Force
+
+      - name: Build setup package
+        run: node scripts/run-electron-builder.mjs --win nsis --x64
 
       - name: Publish GitHub Release
         shell: pwsh
@@ -61,7 +74,7 @@ jobs:
           TAG_NAME: ${{ github.ref_name }}
           VERSION: ${{ steps.pkg.outputs.version }}
         run: |
-          $portable = "release/RubiKey-$env:VERSION-portable.exe"
+          $portable = "release-artifacts/RubiKey-$env:VERSION-portable.exe"
           $setup = "release/RubiKey-$env:VERSION-setup.exe"
           $blockmap = "release/RubiKey-$env:VERSION-setup.exe.blockmap"
 
