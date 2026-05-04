@@ -1,31 +1,38 @@
-# RubiKey
+<div align="center">
+  <img src=".github/assets/rubikey-logo.svg" alt="RubiKey logo" width="128" height="128" />
 
-**RubiKey** 是一个基于 Electron 的 Windows 工具，用来把**智能魔方的转动映射成键盘/鼠标操作**
+  <h1>RubiKey</h1>
+
+  <p>
+    一个基于 Electron 的 Windows 智能魔方键鼠映射工具。
+  </p>
+
+  <p>
+    <img alt="Electron" src="https://img.shields.io/badge/Electron-36-47848F?style=for-the-badge&logo=electron&logoColor=white" />
+    <img alt="React" src="https://img.shields.io/badge/React-19-61DAFB?style=for-the-badge&logo=react&logoColor=20232A" />
+    <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5.8-3178C6?style=for-the-badge&logo=typescript&logoColor=white" />
+    <img alt="Windows" src="https://img.shields.io/badge/Windows-11-0078D4?style=for-the-badge&logo=windows&logoColor=white" />
+  </p>
+</div>
 
 核心链路：
 
 > **智能魔方 → 蓝牙连接 → 数据解析 → 规则匹配 → 键鼠执行**
 
-如果你想让手中智能魔方的转动也变为一种输入方式，和外界进行交互（而不局限于 app 生态/网页），那么 RubiKey 做的就是这件事
-
-## 做了什么
+## 功能
 
 - **自动连接智能魔方并提供转动映射层**
 - **支持多套映射方案管理**，可自由切换、导入和导出
 - **支持多步宏**，可按顺序执行或同时触发
 - **提供托盘常驻、运行开关和紧急停止**
-- **记录动作日志与连接诊断信息**
-- **为部分支持陀螺仪的 Moyu32 设备提供鼠标移动控制**
 
-## 支持哪些
+## 支持
 
-支持以下设备和协议：
-
-- **GAN 智能魔方**：`v2 / v3 / v4`
+- **GAN 智能**：`v2 / v3 / v4`
 - **魔域 智能**：`Moyu32`
 > 由于作者没有奇艺智能所以无法测试并兼容（苦鲁西）
 
-可识别的基础转动包括：
+可识别的基础转动：
 
 - `U / U'`
 - `R / R'`
@@ -36,38 +43,27 @@
 
 可映射的键鼠行为：
 
-键盘：
 - `A-Z`
 - `0-9`
 - 方向键
 - `Shift / Ctrl / Alt / Space / Enter / Tab / Esc / Backspace`
-
-鼠标（单击/长按）：
 - 左键
 - 右键
 
-## 页面
+## 说明
 
-- **首页**：连接状态、设备信息、运行控制、MAC 输入、陀螺仪设置
-- **方案映射**：Profile 切换、规则编辑、方案导入导出
-- **动作日志**：转动与映射执行记录
-- **连接诊断**：连接摘要与通信日志
-- **关于**：项目相关信息
-
-## 能干什么
-
-RubiKey 预设了一套面向 **机械动力三阶魔方** 的方案，
+软件预设了一套面向 **机械动力三阶魔方** 的方案，
 也就是这个视频里演示所使用的方案：
 
 [什么叫“用智能魔方在 MC 里玩魔方”?](https://www.bilibili.com/video/BV1ZaQmB4EsG/)
 
-除了预设方案之外，你可以发挥自己的想象力和创造力，整更好玩的活
+除了预设方案之外，可以发挥自己的想象力和创造力，整更好玩的活
 
-## 说明
+## 注意
 
 - 部分设备连接时需要 **手动输入 MAC 地址**
-- **陀螺仪鼠标** 仅兼容魔域智能
-- 软件支持 **Windows 11**
+- **陀螺仪鼠标** 仅兼容支持陀螺仪的魔域智能
+- 建议使用 **Windows 11**
 - 支持 **托盘常驻、运行开关和紧急停止**
 
 ## 致谢
